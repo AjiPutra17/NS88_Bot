@@ -658,15 +658,11 @@ client.on('interactionCreate', async (interaction) => {
             `💳 **Metode Pembayaran:** ${paymentMethod}\n\n` +
             `─────────────────────────────\n` +
             `**🏦 INFORMASI PEMBAYARAN QRIS**\n` +
-            `Our Cloud, Digital & Kreatif\n` +
+            `Ajie Yunisyaputra, Ahli Osteopati\n` +
             `**SCAN UNTUK MELAKUKAN TRANSFER**\n` +
-            `**NMID:** 0H20456644003\n` +
-            `\`\`\`\n` +
-            `Silakan scan QR Code untuk pembayaran\n` +
-            `atau transfer ke nomor rekening/e-wallet\n` +
-            `yang tersedia.\n` +
-            `\`\`\``
+            `**NMID:** ID1025461592426\n` 
           )
+          .setImage('https://cdn.discordapp.com/attachments/1453015494650232842/1453015945034465433/1766117160786-1.png?ex=69547bcd&is=69532a4d&hm=a0e60faee30a47eef3dc99d883663fab07613d86210d6fb8a9cf1a8b038d328b') // ← QR BESAR
           .setFooter({ text: `${ticketId} | NS88 BOT 🤖` })
           .setTimestamp();
 
