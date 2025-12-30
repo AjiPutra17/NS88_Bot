@@ -1,18 +1,6 @@
 // NS88 Discord Bot - Rekber/MC System
 // Pastikan Discord.js v14+ terinstall: npm install discord.js@latest
 
-const express = require("express");
-const app = express();
-
-app.get("/", (req, res) => {
-  res.send("NS88 Discord Bot is running 🚀");
-});
-
-const PORT = process.env.PORT || 3000;
-app.listen(PORT, () => {
-  console.log("🌐 HTTP server aktif");
-});
-
 const { 
   Client, 
   GatewayIntentBits, 

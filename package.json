@@ -1,14 +1,11 @@
 {
   "name": "ns88-bot",
   "version": "1.0.0",
-  "description": "",
+  "description": "Discord Rekber / MC Bot",
   "main": "index.js",
   "scripts": {
     "start": "node index.js"
   },
-  "keywords": [],
-  "author": "",
-  "license": "ISC",
   "type": "commonjs",
   "dependencies": {
     "discord.js": "^14.25.1"
