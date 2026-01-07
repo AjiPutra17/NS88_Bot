@@ -500,7 +500,7 @@ client.on('interactionCreate', async (interaction) => {
         const ticket = tickets.get(ticketId);
 
         if (!ticket) {
-          return interaction.reply({ content: '❌ Ticket tidak ditemukan!', ephemeral: true });
+          return interaction.reply({ content: '❌ Ticket tidak ditemukan!', flags: 64 });
         }
 
         const userSelectMenu = new UserSelectMenuBuilder()
@@ -514,7 +514,7 @@ client.on('interactionCreate', async (interaction) => {
         await interaction.reply({
           content: '👤 **Pilih user yang ingin ditambahkan sebagai Buyer:**\n💡 Gunakan search bar untuk mencari user dengan cepat!',
           components: [row],
-          ephemeral: true
+          flags: 64
         });
 
         console.log('✅ User select menu (Buyer) berhasil ditampilkan');
@@ -522,7 +522,7 @@ client.on('interactionCreate', async (interaction) => {
         console.error('❌ Error add_buyer:', error);
         await interaction.reply({ 
           content: '❌ Terjadi kesalahan!', 
-          ephemeral: true 
+          flags: 64
         });
       }
     }
@@ -534,7 +534,7 @@ client.on('interactionCreate', async (interaction) => {
         const ticket = tickets.get(ticketId);
 
         if (!ticket) {
-          return interaction.reply({ content: '❌ Ticket tidak ditemukan!', ephemeral: true });
+          return interaction.reply({ content: '❌ Ticket tidak ditemukan!', flags: 64 });
         }
 
         const userSelectMenu = new UserSelectMenuBuilder()
@@ -548,7 +548,7 @@ client.on('interactionCreate', async (interaction) => {
         await interaction.reply({
           content: '💼 **Pilih user yang ingin ditambahkan sebagai Seller:**\n💡 Gunakan search bar untuk mencari user dengan cepat!',
           components: [row],
-          ephemeral: true
+          flags: 64
         });
 
         console.log('✅ User select menu (Seller) berhasil ditampilkan');
@@ -556,7 +556,7 @@ client.on('interactionCreate', async (interaction) => {
         console.error('❌ Error add_seller:', error);
         await interaction.reply({ 
           content: '❌ Terjadi kesalahan!', 
-          ephemeral: true 
+          flags: 64
         });
       }
     }
@@ -642,7 +642,7 @@ client.on('interactionCreate', async (interaction) => {
       if (!interaction.member.permissions.has(PermissionFlagsBits.Administrator)) {
         return interaction.reply({ 
           content: '❌ **Hanya Admin yang bisa menandai transaksi selesai!**', 
-          ephemeral: true 
+          flags: 64
         });
       }
 
@@ -676,7 +676,7 @@ client.on('interactionCreate', async (interaction) => {
       if (!ticket) {
         return interaction.reply({ 
           content: '❌ Ticket tidak ditemukan!', 
-          ephemeral: true 
+          flags: 64
         });
       }
 
@@ -694,7 +694,7 @@ client.on('interactionCreate', async (interaction) => {
       if (!isAdmin && !isAllowedUser) {
         return interaction.reply({ 
           content: '❌ **Hanya Admin, Buyer, atau Seller yang bisa membatalkan transaksi!**', 
-          ephemeral: true 
+          flags: 64
         });
       }
 
@@ -718,7 +718,7 @@ client.on('interactionCreate', async (interaction) => {
     // Modal Submit: Ticket Form
     if (interaction.isModalSubmit() && interaction.customId === 'ticket_form') {
       try {
-        await interaction.deferReply({ ephemeral: true });
+        await interaction.deferReply({ flags: 64 }); // 64 = ephemeral flag
 
         const buyer = interaction.fields.getTextInputValue('buyer_username');
         const seller = interaction.fields.getTextInputValue('seller_username');
@@ -808,7 +808,7 @@ client.on('interactionCreate', async (interaction) => {
             `**SCAN UNTUK MELAKUKAN TRANSFER**\n` +
             `**NMID:** ID1025461592426\n` 
           )
-         .setImage('https://cdn.discordapp.com/attachments/1453015494650232842/1458349144963022910/1767753033603.png?ex=695f50fa&is=695dff7a&hm=de2a9ed63a8c6c3f4ac92a814b5fdb3ead0985a93efff6f437f5247e099976e1')
+          .setImage('https://cdn.discordapp.com/attachments/1453015494650232842/1458349144963022910/1767753033603.png?ex=695f50fa&is=695dff7a&hm=de2a9ed63a8c6c3f4ac92a814b5fdb3ead0985a93efff6f437f5247e099976e1')
           .setFooter({ text: `${ticketId} | NS88 BOT 🤖` })
           .setTimestamp();
 
@@ -864,7 +864,7 @@ client.on('interactionCreate', async (interaction) => {
         } else {
           await interaction.reply({ 
             content: `❌ Terjadi kesalahan: ${errorMessage}`, 
-            ephemeral: true 
+            flags: 64
           });
         }
       }
@@ -873,9 +873,9 @@ client.on('interactionCreate', async (interaction) => {
   } catch (error) {
     console.error('❌ Error pada interaction:', error);
     if (interaction.replied || interaction.deferred) {
-      await interaction.followUp({ content: '❌ Terjadi kesalahan!', ephemeral: true });
+      await interaction.followUp({ content: '❌ Terjadi kesalahan!', flags: 64 });
     } else {
-      await interaction.reply({ content: '❌ Terjadi kesalahan!', ephemeral: true });
+      await interaction.reply({ content: '❌ Terjadi kesalahan!', flags: 64 });
     }
   }
 });
