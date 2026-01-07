@@ -263,7 +263,7 @@ client.on('messageCreate', async (message) => {
     try {
       // LANGKAH 1: Hapus pesan user SEGERA
       try {
-        await message.delete();
+        // await message.delete();
         console.log(`🗑️ Pesan user ${message.author.tag} dihapus di ${message.channel.name}`);
       } catch (deleteError) {
         console.error('❌ Error menghapus pesan user:', deleteError.message);
