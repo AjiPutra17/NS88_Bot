@@ -752,11 +752,16 @@ client.on('interactionCreate', async (interaction) => {
               },
               {
                 id: interaction.user.id,
-                allow: [PermissionFlagsBits.ViewChannel, PermissionFlagsBits.SendMessages],
+                allow: [
+                  PermissionFlagsBits.ViewChannel,
+                  PermissionFlagsBits.SendMessages
+                ],
               },
               {
                 id: client.user.id,
                 allow: [
+                  PermissionFlagsBits.ViewChannel,
+                  PermissionFlagsBits.SendMessages,
                   PermissionFlagsBits.EmbedLinks,
                   PermissionFlagsBits.AttachFiles,
                   PermissionFlagsBits.ReadMessageHistory
