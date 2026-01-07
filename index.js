@@ -261,7 +261,19 @@ client.on('messageCreate', async (message) => {
   // Auto-warning SETIAP pesan di channel yang ditentukan
   if (WARNING_CHANNEL_IDS.includes(message.channel.id)) {
     try {
-      // Hapus warning lama jika ada
+      // LANGKAH 1: Hapus pesan user SEGERA
+      try {
+        await message.delete();
+        console.log(`🗑️ Pesan user ${message.author.tag} dihapus di ${message.channel.name}`);
+      } catch (deleteError) {
+        console.error('❌ Error menghapus pesan user:', deleteError.message);
+        // Cek apakah bot punya permission
+        if (!message.channel.permissionsFor(client.user).has(PermissionFlagsBits.ManageMessages)) {
+          console.error('❌ Bot tidak punya permission "Manage Messages" di channel ini!');
+        }
+      }
+
+      // LANGKAH 2: Hapus warning lama jika ada
       const lastWarningId = lastWarningMessages.get(message.channel.id);
       if (lastWarningId) {
         try {
@@ -269,19 +281,11 @@ client.on('messageCreate', async (message) => {
           await oldWarning.delete();
           console.log(`🗑️ Warning lama dihapus di ${message.channel.name}`);
         } catch (error) {
-          console.log('Warning lama sudah tidak ada atau sudah dihapus');
+          console.log('⚠️ Warning lama sudah tidak ada atau sudah dihapus');
         }
       }
 
-      // Hapus pesan user yang memicu warning
-      try {
-        await message.delete();
-        console.log(`🗑️ Pesan user ${message.author.tag} dihapus di ${message.channel.name}`);
-      } catch (error) {
-        console.log('Tidak bisa menghapus pesan user');
-      }
-
-      // Kirim warning baru
+      // LANGKAH 3: Kirim warning baru
       const warningEmbed = new EmbedBuilder()
         .setColor('#FF0000')
         .setTitle('⚠️ PERINGATAN: Gunakan Rekber/MC Resmi!')
@@ -302,13 +306,16 @@ client.on('messageCreate', async (message) => {
 
       const warningMessage = await message.channel.send({ embeds: [warningEmbed] });
       
-      // Simpan ID warning baru
+      // LANGKAH 4: Simpan ID warning baru
       lastWarningMessages.set(message.channel.id, warningMessage.id);
       
-      console.log(`⚠️ Auto-warning dikirim di ${message.channel.name} (ID: ${warningMessage.id})`);
+      console.log(`✅ Auto-warning dikirim di ${message.channel.name} (ID: ${warningMessage.id})`);
     } catch (error) {
-      console.error('❌ Error mengirim auto-warning:', error);
+      console.error('❌ Error dalam auto-warning system:', error);
     }
+    
+    // IMPORTANT: Return agar tidak proses pesan ini lebih lanjut
+    return;
   }
   // ========== END FITUR AUTO-WARNING ==========
 
@@ -801,7 +808,7 @@ client.on('interactionCreate', async (interaction) => {
             `**SCAN UNTUK MELAKUKAN TRANSFER**\n` +
             `**NMID:** ID1025461592426\n` 
           )
-          .setImage('https://cdn.discordapp.com/attachments/1453015494650232842/1458349144963022910/1767753033603.png?ex=695f50fa&is=695dff7a&hm=de2a9ed63a8c6c3f4ac92a814b5fdb3ead0985a93efff6f437f5247e099976e1')
+         .setImage('https://cdn.discordapp.com/attachments/1453015494650232842/1458349144963022910/1767753033603.png?ex=695f50fa&is=695dff7a&hm=de2a9ed63a8c6c3f4ac92a814b5fdb3ead0985a93efff6f437f5247e099976e1')
           .setFooter({ text: `${ticketId} | NS88 BOT 🤖` })
           .setTimestamp();
 
@@ -886,4 +893,4 @@ process.on('unhandledRejection', error => {
 client.login(process.env.TOKEN)
   .catch(error => {
     console.error('❌ Error login bot:', error);
-  });
+  })
