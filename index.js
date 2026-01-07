@@ -874,10 +874,7 @@ process.on('unhandledRejection', error => {
   console.error('❌ Unhandled promise rejection:', error);
 });
 
-// Login bot - GANTI TOKEN DI BAWAH INI!
 client.login(process.env.TOKEN)
   .catch(error => {
     console.error('❌ Error login bot:', error);
-  });its.ViewChannel, 
-PermissionFlagsBits.SendMessages,
-PermissionFlagsB
+  });
