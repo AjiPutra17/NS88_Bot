@@ -40,8 +40,8 @@ const TICKET_REKBER_CHANNEL_ID = process.env.TICKET_CHANNEL; // Ganti dengan ID 
 const DONATUR_ROLE_NAME = 'Donatur NS88'; // Nama role donatur di server Anda
 
 // SETTING: Slowmode duration (dalam detik)
-const SLOWMODE_DONATUR = 30; // Donatur: 30 detik
-const SLOWMODE_NON_DONATUR = 180; // Non-donatur: 3 menit (180 detik)
+const SLOWMODE_DONATUR = 600; // Donatur: 10 Menit (600 detik)
+const SLOWMODE_NON_DONATUR = 1800; // Non-donatur: 30 menit (1800 detik)
 
 // Menyimpan ID pesan warning terakhir per channel
 const lastWarningMessages = new Map();
