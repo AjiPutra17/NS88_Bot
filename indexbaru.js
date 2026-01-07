@@ -34,7 +34,7 @@ const WARNING_CHANNEL_IDS = [
 ];
 
 // SETTING: ID Channel ticket-rekber untuk mention di warning (GANTI DENGAN ID CHANNEL ANDA!)
-const TICKET_REKBER_CHANNEL_ID = process.env.TICKET_CHANNEL; // Ganti dengan ID channel ticket-rekber Anda
+const TICKET_REKBER_CHANNEL_ID = process.env.SETUP_CHANNEL_ID; // Ganti dengan ID channel ticket-rekber Anda
 
 // SETTING: Nama role donatur (GANTI SESUAI ROLE DI SERVER ANDA!)
 const DONATUR_ROLE_NAME = 'Donatur NS88'; // Nama role donatur di server Anda
@@ -79,7 +79,7 @@ function calculateFee(nominal) {
 async function archiveAndDeleteTicket(ticket, status, guild) {
   try {
     // Kirim ke channel arsip
-    if (ARCHIVE_CHANNEL_ID) {
+    if (ARCHIVE_CHANNEL_ID && ARCHIVE_CHANNEL_ID === '1455457335953854585') {
       const archiveChannel = await guild.channels.fetch(ARCHIVE_CHANNEL_ID);
       
       if (archiveChannel) {
@@ -142,7 +142,7 @@ client.once('clientReady', async (client) => {
   client.user.setActivity('Rekber/MC System', { type: 3 }); // 3 = WATCHING
   
   // Auto-setup saat bot online
-  if (SETUP_CHANNEL_ID) {
+  if (SETUP_CHANNEL_ID && SETUP_CHANNEL_ID === '1455457050502107264') {
     try {
       const channel = await client.channels.fetch(SETUP_CHANNEL_ID);
       

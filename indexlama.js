@@ -27,28 +27,6 @@ const ARCHIVE_CHANNEL_ID = process.env.ARCHIVE_CHANNEL_ID;
 // SETTING: Username untuk notifikasi admin (GANTI SESUAI KEBUTUHAN!)
 const ADMIN_USERNAME = 'crzdrn'; // atau 'Croz' sesuai username yang digunakan
 
-// SETTING: Channel IDs untuk auto-warning rekber/mc (GANTI DENGAN ID CHANNEL ANDA!)
-const WARNING_CHANNEL_IDS = [
-  '1458354271136383026', // Channel Market - GANTI dengan ID channel Anda
-  // Tambahkan channel lain sesuai kebutuhan
-];
-
-// SETTING: ID Channel ticket-rekber untuk mention di warning (GANTI DENGAN ID CHANNEL ANDA!)
-const TICKET_REKBER_CHANNEL_ID = process.env.TICKET_CHANNEL; // Ganti dengan ID channel ticket-rekber Anda
-
-// SETTING: Nama role donatur (GANTI SESUAI ROLE DI SERVER ANDA!)
-const DONATUR_ROLE_NAME = 'Donatur NS88'; // Nama role donatur di server Anda
-
-// SETTING: Slowmode duration (dalam detik)
-const SLOWMODE_DONATUR = 600; // Donatur: 30 detik
-const SLOWMODE_NON_DONATUR = 1800; // Non-donatur: 3 menit (180 detik)
-
-// Menyimpan ID pesan warning terakhir per channel
-const lastWarningMessages = new Map();
-
-// Menyimpan waktu terakhir user mengirim pesan per channel
-const userLastMessageTime = new Map();
-
 // Inisialisasi client
 const client = new Client({
   intents: [
@@ -79,7 +57,7 @@ function calculateFee(nominal) {
 async function archiveAndDeleteTicket(ticket, status, guild) {
   try {
     // Kirim ke channel arsip
-    if (ARCHIVE_CHANNEL_ID) {
+    if (ARCHIVE_CHANNEL_ID && ARCHIVE_CHANNEL_ID === '1455457335953854585') {
       const archiveChannel = await guild.channels.fetch(ARCHIVE_CHANNEL_ID);
       
       if (archiveChannel) {
@@ -142,7 +120,7 @@ client.once('clientReady', async (client) => {
   client.user.setActivity('Rekber/MC System', { type: 3 }); // 3 = WATCHING
   
   // Auto-setup saat bot online
-  if (SETUP_CHANNEL_ID) {
+  if (SETUP_CHANNEL_ID && SETUP_CHANNEL_ID === '1455457050502107264') {
     try {
       const channel = await client.channels.fetch(SETUP_CHANNEL_ID);
       
@@ -192,117 +170,6 @@ client.once('clientReady', async (client) => {
 client.on('messageCreate', async (message) => {
   // Ignore bot messages
   if (message.author.bot) return;
-
-  // ========== FITUR SLOWMODE CUSTOM ==========
-  // Cek slowmode di channel jual-beli
-  if (WARNING_CHANNEL_IDS.includes(message.channel.id)) {
-    const userId = message.author.id;
-    const channelId = message.channel.id;
-    const key = `${userId}-${channelId}`;
-    
-    // Cek apakah user punya role Donatur
-    const isDonatur = message.member.roles.cache.some(role => role.name === DONATUR_ROLE_NAME);
-    const slowmodeDuration = isDonatur ? SLOWMODE_DONATUR : SLOWMODE_NON_DONATUR;
-    
-    // Cek waktu terakhir user kirim pesan di channel ini
-    const lastMessageTime = userLastMessageTime.get(key);
-    const now = Date.now();
-    
-    if (lastMessageTime) {
-      const timeDiff = (now - lastMessageTime) / 1000; // dalam detik
-      
-      if (timeDiff < slowmodeDuration) {
-        // User kirim terlalu cepat!
-        const remainingTime = Math.ceil(slowmodeDuration - timeDiff);
-        const minutes = Math.floor(remainingTime / 60);
-        const seconds = remainingTime % 60;
-        
-        let timeString = '';
-        if (minutes > 0) {
-          timeString = `${minutes} menit ${seconds} detik`;
-        } else {
-          timeString = `${seconds} detik`;
-        }
-        
-        // Hapus pesan user
-        try {
-          await message.delete();
-        } catch (error) {
-          console.log('Tidak bisa menghapus pesan user');
-        }
-        
-        // Kirim warning
-        const slowmodeWarning = await message.channel.send(
-          `${message.author} **Slowmode khusus non-booster:** tunggu **${timeString}** sebelum kirim lagi. ` +
-          `Atau boost server untuk cooldown menjadi **${SLOWMODE_DONATUR} detik**!!!`
-        );
-        
-        // Hapus warning setelah 5 detik
-        setTimeout(async () => {
-          try {
-            await slowmodeWarning.delete();
-          } catch (error) {
-            console.log('Warning sudah dihapus');
-          }
-        }, 5000);
-        
-        console.log(`⏰ Slowmode: ${message.author.tag} kirim terlalu cepat di ${message.channel.name}`);
-        return; // Stop eksekusi, jangan proses pesan ini
-      }
-    }
-    
-    // Update waktu terakhir user kirim pesan
-    userLastMessageTime.set(key, now);
-    console.log(`✅ Pesan dari ${message.author.tag} diizinkan (${isDonatur ? 'Donatur' : 'Non-Donatur'})`);
-  }
-  // ========== END FITUR SLOWMODE CUSTOM ==========
-
-  // ========== FITUR AUTO-WARNING REKBER/MC ==========
-  // Auto-warning SETIAP pesan di channel yang ditentukan
-  if (WARNING_CHANNEL_IDS.includes(message.channel.id)) {
-    try {
-      // Hapus warning lama jika ada
-      const lastWarningId = lastWarningMessages.get(message.channel.id);
-      if (lastWarningId) {
-        try {
-          const oldWarning = await message.channel.messages.fetch(lastWarningId);
-          await oldWarning.delete();
-          console.log(`🗑️ Warning lama dihapus di ${message.channel.name}`);
-        } catch (error) {
-          console.log('Warning lama sudah tidak ada atau sudah dihapus');
-        }
-      }
-
-      // Kirim warning baru
-      const warningEmbed = new EmbedBuilder()
-        .setColor('#FF0000')
-        .setTitle('⚠️ PERINGATAN: Gunakan Rekber/MC Resmi!')
-        .setDescription(
-          `**Jangan lupa menggunakan rekber / mc / mm di** <#${TICKET_REKBER_CHANNEL_ID}> **agar tidak terkena scam**\n\n` +
-          `⚠️ **PENTING:**\n` +
-          `• Gunakan layanan rekber/MC resmi untuk keamanan transaksi\n` +
-          `• Hati-hati dengan penipuan!\n` +
-          `• Laporkan aktivitas mencurigakan kepada admin\n\n` +
-          `💡 **Tips Aman Bertransaksi:**\n` +
-          `• Selalu gunakan middleman/rekber resmi\n` +
-          `• Jangan percaya janji-janji yang terlalu bagus\n` +
-          `• Verifikasi identitas penjual/pembeli\n` +
-          `• Simpan bukti transaksi`
-        )
-        .setFooter({ text: 'NS88 BOT 🤖 - Auto Warning System' })
-        .setTimestamp();
-
-      const warningMessage = await message.channel.send({ embeds: [warningEmbed] });
-      
-      // Simpan ID warning baru
-      lastWarningMessages.set(message.channel.id, warningMessage.id);
-      
-      console.log(`⚠️ Auto-warning dikirim di ${message.channel.name} (ID: ${warningMessage.id})`);
-    } catch (error) {
-      console.error('❌ Error mengirim auto-warning:', error);
-    }
-  }
-  // ========== END FITUR AUTO-WARNING ==========
 
   // Deteksi jika pesan dikirim di channel ticket dan ada attachment (screenshot)
   if (message.channel.name && message.channel.name.startsWith('ticket-ticket-')) {
@@ -742,6 +609,8 @@ client.on('interactionCreate', async (interaction) => {
               {
                 id: client.user.id,
                 allow: [
+                  PermissionFlagsBits.ViewChannel, 
+                  PermissionFlagsBits.SendMessages,
                   PermissionFlagsBits.EmbedLinks,
                   PermissionFlagsBits.AttachFiles,
                   PermissionFlagsBits.ReadMessageHistory
@@ -793,7 +662,7 @@ client.on('interactionCreate', async (interaction) => {
             `**SCAN UNTUK MELAKUKAN TRANSFER**\n` +
             `**NMID:** ID1025461592426\n` 
           )
-          .setImage('https://cdn.discordapp.com/attachments/1453015494650232842/1458349144963022910/1767753033603.png?ex=695f50fa&is=695dff7a&hm=de2a9ed63a8c6c3f4ac92a814b5fdb3ead0985a93efff6f437f5247e099976e1')
+          .setImage('https://cdn.discordapp.com/attachments/1453015494650232842/1453015945034465433/1766117160786-1.png?ex=69547bcd&is=69532a4d&hm=a0e60faee30a47eef3dc99d883663fab07613d86210d6fb8a9cf1a8b038d328b') // ← QR BESAR
           .setFooter({ text: `${ticketId} | NS88 BOT 🤖` })
           .setTimestamp();
 
@@ -878,6 +747,4 @@ process.on('unhandledRejection', error => {
 client.login(process.env.TOKEN)
   .catch(error => {
     console.error('❌ Error login bot:', error);
-  });its.ViewChannel, 
-PermissionFlagsBits.SendMessages,
-PermissionFlagsB
+  });
