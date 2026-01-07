@@ -886,4 +886,4 @@ process.on('unhandledRejection', error => {
 client.login(process.env.TOKEN)
   .catch(error => {
     console.error('❌ Error login bot:', error);
-  });its.ViewChannel
+  });
