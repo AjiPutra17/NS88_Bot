@@ -1,5 +1,10 @@
-// NS88 Discord Bot - Rekber/MC System
-// Pastikan Discord.js v14+ terinstall: npm install discord.js@latest
+// ============================================================================
+// NS88 DISCORD BOT - REKBER/MC SYSTEM
+// Version: 2.0.0
+// Description: Professional Discord bot for managing middleman/escrow tickets
+// Author: NS88 Development Team
+// License: MIT
+// ============================================================================
 
 const { 
   Client, 
@@ -13,405 +18,838 @@ const {
   TextInputStyle,
   ChannelType,
   PermissionFlagsBits,
-  StringSelectMenuBuilder,
-  StringSelectMenuOptionBuilder,
-  UserSelectMenuBuilder
+  UserSelectMenuBuilder,
+  ActivityType
 } = require('discord.js');
 
-// SETTING: ID Channel untuk auto-setup (GANTI DENGAN ID CHANNEL ANDA!)
-const SETUP_CHANNEL_ID = process.env.SETUP_CHANNEL_ID;
+// ============================================================================
+// CONFIGURATION
+// ============================================================================
 
-// SETTING: ID Channel untuk arsip ticket (GANTI DENGAN ID CHANNEL ANDA!)
-const ARCHIVE_CHANNEL_ID = process.env.ARCHIVE_CHANNEL_ID;
+const CONFIG = {
+  // Bot Settings
+  BOT: {
+    NAME: 'NS88 BOT',
+    VERSION: '2.0.0',
+    ACTIVITY: 'Rekber/MC System',
+    ACTIVITY_TYPE: ActivityType.Watching,
+    PREFIX: '!'
+  },
 
-// SETTING: Username untuk notifikasi admin (GANTI SESUAI KEBUTUHAN!)
-const ADMIN_USERNAME = 'crzdrn'; // atau 'Croz' sesuai username yang digunakan
+  // Channel IDs (from environment variables)
+  CHANNELS: {
+    SETUP: process.env.SETUP_CHANNEL_ID || null,
+    ARCHIVE: process.env.ARCHIVE_CHANNEL_ID || null,
+    TICKET: process.env.TICKET_CHANNEL || null,
+    WARNING: (process.env.WARNING_CHANNEL_IDS || '').split(',').filter(Boolean)
+  },
 
-// SETTING: Channel IDs untuk auto-warning rekber/mc (GANTI DENGAN ID CHANNEL ANDA!)
-const WARNING_CHANNEL_IDS = [
-  '1458354271136383026', // Channel Market - GANTI dengan ID channel Anda
-  // Tambahkan channel lain sesuai kebutuhan
-];
+  // Admin Settings
+  ADMIN: {
+    USERNAME: process.env.ADMIN_USERNAME || 'crzdrn',
+    ROLE_NAME: process.env.ADMIN_ROLE_NAME || 'Admin'
+  },
 
-// SETTING: ID Channel ticket-rekber untuk mention di warning (GANTI DENGAN ID CHANNEL ANDA!)
-const TICKET_REKBER_CHANNEL_ID = process.env.TICKET_CHANNEL; // Ganti dengan ID channel ticket-rekber Anda
+  // Donatur/Booster Settings
+  DONATUR: {
+    ROLE_NAME: process.env.DONATUR_ROLE_NAME || 'Donatur NS88',
+    SLOWMODE_SECONDS: parseInt(process.env.SLOWMODE_DONATUR) || 600,
+  },
 
-// SETTING: Nama role donatur (GANTI SESUAI ROLE DI SERVER ANDA!)
-const DONATUR_ROLE_NAME = 'Donatur NS88'; // Nama role donatur di server Anda
+  // Non-Donatur Settings
+  NON_DONATUR: {
+    SLOWMODE_SECONDS: parseInt(process.env.SLOWMODE_NON_DONATUR) || 1800,
+  },
 
-// SETTING: Slowmode duration (dalam detik)
-const SLOWMODE_DONATUR = 600; // Donatur: 10 Menit (600 detik)
-const SLOWMODE_NON_DONATUR = 1800; // Non-donatur: 30 menit (1800 detik)
+  // Payment Information
+  PAYMENT: {
+    QRIS_IMAGE_URL: process.env.QRIS_IMAGE_URL || 'https://cdn.discordapp.com/attachments/1453015494650232842/1458349144963022910/1767753033603.png',
+    QRIS_NMID: process.env.QRIS_NMID || 'ID1025461592426',
+    ACCOUNT_NAME: process.env.PAYMENT_ACCOUNT_NAME || 'NONSTOP88, GAMER'
+  },
 
-// Menyimpan ID pesan warning terakhir per channel
-const lastWarningMessages = new Map();
+  // Ticket Settings
+  TICKET: {
+    DELETE_DELAY_MS: 5000,
+    MIN_NOMINAL: 1000,
+    PREFIX: 'TICKET',
+    CHANNEL_PREFIX: 'ticket-'
+  },
 
-// Menyimpan waktu terakhir user mengirim pesan per channel
-const userLastMessageTime = new Map();
+  // Colors (Hex)
+  COLORS: {
+    PRIMARY: '#5865F2',
+    SUCCESS: '#00FF00',
+    DANGER: '#FF0000',
+    WARNING: '#FFA500',
+    INFO: '#00BFFF'
+  },
 
-// Inisialisasi client
+  // Fee Structure (in IDR)
+  FEE_STRUCTURE: [
+    { min: 1000, max: 9000, fee: 2000 },
+    { min: 10000, max: 49000, fee: 3000 },
+    { min: 50000, max: 99000, fee: 4000 },
+    { min: 100000, max: 150000, fee: 7000 },
+    { min: 150000, max: 300000, fee: 10000 },
+    { min: 300001, max: Infinity, percentage: 0.05 }
+  ]
+};
+
+// ============================================================================
+// CLIENT INITIALIZATION
+// ============================================================================
+
 const client = new Client({
   intents: [
     GatewayIntentBits.Guilds,
     GatewayIntentBits.GuildMessages,
     GatewayIntentBits.MessageContent,
-    GatewayIntentBits.GuildMembers, // PENTING: untuk fetch members
+    GatewayIntentBits.GuildMembers,
   ]
 });
 
-// Database sederhana (gunakan database real untuk production)
-const tickets = new Map();
-let ticketCounter = 1;
+// ============================================================================
+// DATA STORAGE
+// ============================================================================
 
-// Fungsi hitung fee
-function calculateFee(nominal) {
-  const amount = parseInt(nominal);
-  if (amount >= 1000 && amount <= 9000) return 2000;
-  if (amount >= 10000 && amount <= 49000) return 3000;
-  if (amount >= 50000 && amount <= 99000) return 4000;
-  if (amount >= 100000 && amount <= 150000) return 7000;
-  if (amount >= 150000 && amount <= 300000) return 10000;
-  if (amount > 300000) return Math.floor(amount * 0.05);
-  return 0;
-}
+class TicketManager {
+  constructor() {
+    this.tickets = new Map();
+    this.counter = 1;
+  }
 
-// Fungsi untuk mengirim ke arsip dan hapus channel
-async function archiveAndDeleteTicket(ticket, status, guild) {
-  try {
-    // Kirim ke channel arsip
-    if (ARCHIVE_CHANNEL_ID) {
-      const archiveChannel = await guild.channels.fetch(ARCHIVE_CHANNEL_ID);
-      
-      if (archiveChannel) {
-        const statusColor = status === 'selesai' ? '#00FF00' : '#FF0000';
-        const statusEmoji = status === 'selesai' ? '✅' : '❌';
-        const statusText = status === 'selesai' ? 'SELESAI' : 'DIBATALKAN';
-        
-        const archiveEmbed = new EmbedBuilder()
-          .setColor(statusColor)
-          .setTitle(`${statusEmoji} ARSIP TICKET - ${statusText}`)
-          .setDescription(
-            `**${ticket.id}**\n\n` +
-            `**Detail Transaksi:**\n` +
-            `🛒 **Barang:** ${ticket.item}\n\n` +
-            `👤 **Pembeli:** ${ticket.buyer}\n` +
-            `💼 **Penjual:** ${ticket.seller}\n\n` +
-            `💰 **Nominal:** ${formatRupiah(ticket.nominal)}\n` +
-            `💵 **Fee Jasa MC:** ${formatRupiah(ticket.fee)}\n` +
-            `💳 **Total Pembayaran:** ${formatRupiah(ticket.total)}\n\n` +
-            `💳 **Metode Pembayaran:** ${ticket.paymentMethod}\n` +
-            `📅 **Dibuat:** ${ticket.createdAt.toLocaleString('id-ID')}\n` +
-            `🏁 **Status:** ${statusText}`
-          )
-          .setFooter({ text: 'NS88 BOT 🤖 - Arsip Ticket' })
-          .setTimestamp();
-        
-        await archiveChannel.send({ embeds: [archiveEmbed] });
-        console.log(`📁 Ticket ${ticket.id} diarsipkan`);
-      }
+  create(data) {
+    const id = `${CONFIG.TICKET.PREFIX}-${this.counter++}`;
+    const ticket = {
+      id,
+      ...data,
+      status: 'pending',
+      createdAt: new Date(),
+      updatedAt: new Date()
+    };
+    this.tickets.set(id, ticket);
+    return ticket;
+  }
+
+  get(id) {
+    return this.tickets.get(id);
+  }
+
+  update(id, data) {
+    const ticket = this.tickets.get(id);
+    if (ticket) {
+      Object.assign(ticket, data, { updatedAt: new Date() });
+      this.tickets.set(id, ticket);
     }
-    
-    // Hapus channel ticket setelah 5 detik
-    const ticketChannel = await guild.channels.fetch(ticket.channelId);
-    if (ticketChannel) {
-      await ticketChannel.send(`⏳ Channel ini akan dihapus dalam 5 detik...`);
-      
-      setTimeout(async () => {
-        try {
-          await ticketChannel.delete();
-          console.log(`🗑️ Channel ${ticketChannel.name} berhasil dihapus`);
-        } catch (error) {
-          console.error('❌ Error menghapus channel:', error);
-        }
-      }, 5000); // 5 detik
-    }
-  } catch (error) {
-    console.error('❌ Error dalam archiveAndDeleteTicket:', error);
+    return ticket;
+  }
+
+  delete(id) {
+    return this.tickets.delete(id);
+  }
+
+  getAll() {
+    return Array.from(this.tickets.values());
   }
 }
 
-// Format rupiah
-function formatRupiah(amount) {
-  return `Rp ${parseInt(amount).toLocaleString('id-ID')}`;
+class SlowmodeManager {
+  constructor() {
+    this.userLastMessageTime = new Map();
+    this.lastWarningMessages = new Map();
+  }
+
+  getKey(userId, channelId) {
+    return `${userId}-${channelId}`;
+  }
+
+  setLastMessageTime(userId, channelId, time = Date.now()) {
+    const key = this.getKey(userId, channelId);
+    this.userLastMessageTime.set(key, time);
+  }
+
+  getLastMessageTime(userId, channelId) {
+    const key = this.getKey(userId, channelId);
+    return this.userLastMessageTime.get(key);
+  }
+
+  getRemainingTime(userId, channelId, duration) {
+    const lastTime = this.getLastMessageTime(userId, channelId);
+    if (!lastTime) return 0;
+    
+    const elapsed = (Date.now() - lastTime) / 1000;
+    return Math.max(0, duration - elapsed);
+  }
+
+  setWarningMessage(channelId, messageId) {
+    this.lastWarningMessages.set(channelId, messageId);
+  }
+
+  getWarningMessage(channelId) {
+    return this.lastWarningMessages.get(channelId);
+  }
 }
 
-// Event: Bot ready
-client.once('clientReady', async (client) => {
-  console.log(`✅ Bot ${client.user.tag} sudah online!`);
-  console.log(`📊 Terhubung ke ${client.guilds.cache.size} server(s)`);
-  client.user.setActivity('Rekber/MC System', { type: 3 }); // 3 = WATCHING
-  
-  // Auto-setup saat bot online
-  if (SETUP_CHANNEL_ID) {
+const ticketManager = new TicketManager();
+const slowmodeManager = new SlowmodeManager();
+
+// ============================================================================
+// UTILITY FUNCTIONS
+// ============================================================================
+
+class Utils {
+  /**
+   * Calculate fee based on nominal amount
+   * @param {number} nominal - Transaction amount
+   * @returns {number} - Calculated fee
+   */
+  static calculateFee(nominal) {
+    const amount = parseInt(nominal);
+    
+    for (const tier of CONFIG.FEE_STRUCTURE) {
+      if (amount >= tier.min && amount <= tier.max) {
+        return tier.percentage 
+          ? Math.floor(amount * tier.percentage)
+          : tier.fee;
+      }
+    }
+    
+    return 0;
+  }
+
+  /**
+   * Format number to Rupiah currency
+   * @param {number} amount - Amount to format
+   * @returns {string} - Formatted currency string
+   */
+  static formatRupiah(amount) {
+    return `Rp ${parseInt(amount).toLocaleString('id-ID')}`;
+  }
+
+  /**
+   * Format seconds to readable time string
+   * @param {number} seconds - Total seconds
+   * @returns {string} - Formatted time string
+   */
+  static formatTime(seconds) {
+    const minutes = Math.floor(seconds / 60);
+    const secs = Math.floor(seconds % 60);
+    
+    if (minutes > 0) {
+      return `${minutes} menit ${secs} detik`;
+    }
+    return `${secs} detik`;
+  }
+
+  /**
+   * Get fee structure as formatted string
+   * @returns {string} - Formatted fee structure
+   */
+  static getFeeStructureText() {
+    let text = '';
+    for (const tier of CONFIG.FEE_STRUCTURE) {
+      if (tier.percentage) {
+        text += `Nominal diatas ${this.formatRupiah(tier.min - 1)}, fee ${(tier.percentage * 100)}% dari nominal transaksi.\n`;
+      } else {
+        text += `${this.formatRupiah(tier.min)} — ${this.formatRupiah(tier.max)} : ${this.formatRupiah(tier.fee)}\n`;
+      }
+    }
+    return text;
+  }
+
+  /**
+   * Check if user has specific role
+   * @param {GuildMember} member - Discord guild member
+   * @param {string} roleName - Role name to check
+   * @returns {boolean}
+   */
+  static hasRole(member, roleName) {
+    return member.roles.cache.some(role => role.name === roleName);
+  }
+
+  /**
+   * Find user by username (case insensitive)
+   * @param {Guild} guild - Discord guild
+   * @param {string} username - Username to find
+   * @returns {GuildMember|null}
+   */
+  static findUserByUsername(guild, username) {
+    return guild.members.cache.find(member => 
+      member.user.username.toLowerCase() === username.toLowerCase() && 
+      !member.user.bot
+    );
+  }
+
+  /**
+   * Get all admin members
+   * @param {Guild} guild - Discord guild
+   * @returns {Collection<GuildMember>}
+   */
+  static getAdmins(guild) {
+    return guild.members.cache.filter(member => 
+      member.permissions.has(PermissionFlagsBits.Administrator) && 
+      !member.user.bot
+    );
+  }
+
+  /**
+   * Safely delete a message after delay
+   * @param {Message} message - Discord message
+   * @param {number} delay - Delay in milliseconds
+   */
+  static async deleteMessageAfterDelay(message, delay = 5000) {
+    setTimeout(async () => {
+      try {
+        await message.delete();
+      } catch (error) {
+        Logger.debug('Message already deleted or no permission');
+      }
+    }, delay);
+  }
+}
+
+// ============================================================================
+// EMBED BUILDERS
+// ============================================================================
+
+class EmbedFactory {
+  /**
+   * Create setup/welcome embed
+   * @returns {EmbedBuilder}
+   */
+  static createSetupEmbed() {
+    return new EmbedBuilder()
+      .setColor(CONFIG.COLORS.PRIMARY)
+      .setTitle('🎫 Welcome To Ticket Section')
+      .setDescription('Silakan pilih dibawah sesuai kebutuhanmu.')
+      .addFields({
+        name: '📋 LIST FEE MC BACA YA!',
+        value: '```\n' + Utils.getFeeStructureText() + '```'
+      })
+      .setFooter({ text: `${CONFIG.BOT.NAME} 🤖 v${CONFIG.BOT.VERSION}` })
+      .setTimestamp();
+  }
+
+  /**
+   * Create ticket information embed
+   * @param {Object} ticketData - Ticket data
+   * @returns {EmbedBuilder}
+   */
+  static createTicketEmbed(ticketData) {
+    return new EmbedBuilder()
+      .setColor(CONFIG.COLORS.WARNING)
+      .setTitle('🎫 ORDER REKBER/MC - PENDING')
+      .setDescription(
+        `**📝 Detail Transaksi:**\n` +
+        `🛒 **Barang:** ${ticketData.item}\n\n` +
+        `👤 **Pembeli:** ${ticketData.buyer}\n` +
+        `💼 **Penjual:** ${ticketData.seller}\n\n` +
+        `💰 **Nominal:** ${Utils.formatRupiah(ticketData.nominal)}\n` +
+        `💵 **Fee Jasa MC:** ${Utils.formatRupiah(ticketData.fee)}\n` +
+        `💳 **Total Pembayaran:** ${Utils.formatRupiah(ticketData.total)}\n\n` +
+        `💳 **Metode Pembayaran:** ${ticketData.paymentMethod}\n\n` +
+        `━━━━━━━━━━━━━━━━━━━━━━━━━━━\n` +
+        `**🏦 INFORMASI PEMBAYARAN QRIS**\n` +
+        `📱 **Atas Nama:** ${CONFIG.PAYMENT.ACCOUNT_NAME}\n` +
+        `🔍 **NMID:** ${CONFIG.PAYMENT.QRIS_NMID}\n` +
+        `⚡ **SCAN QR CODE DIBAWAH UNTUK TRANSFER**`
+      )
+      .setImage(CONFIG.PAYMENT.QRIS_IMAGE_URL)
+      .setFooter({ text: `${ticketData.id} | ${CONFIG.BOT.NAME} 🤖` })
+      .setTimestamp();
+  }
+
+  /**
+   * Create archive embed
+   * @param {Object} ticket - Ticket data
+   * @param {string} status - Status (selesai/dibatalkan)
+   * @returns {EmbedBuilder}
+   */
+  static createArchiveEmbed(ticket, status) {
+    const isCompleted = status === 'selesai';
+    const color = isCompleted ? CONFIG.COLORS.SUCCESS : CONFIG.COLORS.DANGER;
+    const emoji = isCompleted ? '✅' : '❌';
+    const statusText = isCompleted ? 'SELESAI' : 'DIBATALKAN';
+    
+    return new EmbedBuilder()
+      .setColor(color)
+      .setTitle(`${emoji} ARSIP TICKET - ${statusText}`)
+      .setDescription(
+        `**${ticket.id}**\n\n` +
+        `**📝 Detail Transaksi:**\n` +
+        `🛒 **Barang:** ${ticket.item}\n\n` +
+        `👤 **Pembeli:** ${ticket.buyer}\n` +
+        `💼 **Penjual:** ${ticket.seller}\n\n` +
+        `💰 **Nominal:** ${Utils.formatRupiah(ticket.nominal)}\n` +
+        `💵 **Fee Jasa MC:** ${Utils.formatRupiah(ticket.fee)}\n` +
+        `💳 **Total Pembayaran:** ${Utils.formatRupiah(ticket.total)}\n\n` +
+        `💳 **Metode Pembayaran:** ${ticket.paymentMethod}\n` +
+        `📅 **Dibuat:** ${ticket.createdAt.toLocaleString('id-ID')}\n` +
+        `🏁 **Status:** ${statusText}`
+      )
+      .setFooter({ text: `${CONFIG.BOT.NAME} 🤖 - Arsip Ticket` })
+      .setTimestamp();
+  }
+
+  /**
+   * Create warning embed for rekber/mc
+   * @returns {EmbedBuilder}
+   */
+  static createWarningEmbed() {
+    return new EmbedBuilder()
+      .setColor(CONFIG.COLORS.DANGER)
+      .setTitle('⚠️ PERINGATAN: Gunakan Rekber/MC Resmi!')
+      .setDescription(
+        `**🔒 Jangan lupa menggunakan rekber/mc/mm di** <#${CONFIG.CHANNELS.TICKET}> **agar tidak terkena scam!**\n\n` +
+        `⚠️ **PENTING:**\n` +
+        `• Gunakan layanan rekber/MC resmi untuk keamanan transaksi\n` +
+        `• Hati-hati dengan penipuan dan modus-modus baru!\n` +
+        `• Laporkan aktivitas mencurigakan kepada admin\n` +
+        `• Jangan transfer sebelum menggunakan layanan MC\n\n` +
+        `💡 **Tips Aman Bertransaksi:**\n` +
+        `• ✅ Selalu gunakan middleman/rekber resmi\n` +
+        `• ✅ Jangan percaya janji-janji yang terlalu bagus\n` +
+        `• ✅ Verifikasi identitas penjual/pembeli\n` +
+        `• ✅ Simpan semua bukti transaksi\n` +
+        `• ✅ Baca terms & conditions dengan teliti`
+      )
+      .setFooter({ text: `${CONFIG.BOT.NAME} 🤖 - Auto Warning System` })
+      .setTimestamp();
+  }
+
+  /**
+   * Create payment proof received embed
+   * @param {string} username - User who sent proof
+   * @returns {EmbedBuilder}
+   */
+  static createPaymentProofEmbed(username) {
+    return new EmbedBuilder()
+      .setColor(CONFIG.COLORS.SUCCESS)
+      .setTitle('✅ Bukti Pembayaran Diterima')
+      .setDescription(
+        `Terima kasih **${username}**!\n\n` +
+        `✅ Bukti pembayaran Anda telah kami terima.\n` +
+        `👨‍💼 Admin/MC akan segera mengecek dan memverifikasi pembayaran Anda.\n\n` +
+        `⏳ Mohon tunggu sebentar...\n\n` +
+        `💡 **Note:** Proses verifikasi biasanya memakan waktu 5-15 menit.`
+      )
+      .setFooter({ text: `${CONFIG.BOT.NAME} 🤖 - Auto Response` })
+      .setTimestamp();
+  }
+
+  /**
+   * Create help embed
+   * @returns {EmbedBuilder}
+   */
+  static createHelpEmbed() {
+    return new EmbedBuilder()
+      .setColor(CONFIG.COLORS.INFO)
+      .setTitle(`📖 ${CONFIG.BOT.NAME} Commands`)
+      .setDescription('Daftar command yang tersedia untuk bot ini:')
+      .addFields(
+        { 
+          name: `${CONFIG.BOT.PREFIX}setup-ticket`, 
+          value: '🎫 Setup sistem ticket (Admin only)\nMenampilkan panel untuk membuat ticket rekber/MC',
+          inline: false
+        },
+        { 
+          name: `${CONFIG.BOT.PREFIX}help`, 
+          value: '📚 Tampilkan pesan bantuan ini\nMenampilkan semua command yang tersedia',
+          inline: false
+        },
+        {
+          name: '📊 Status Bot',
+          value: `Version: ${CONFIG.BOT.VERSION}\nPrefix: ${CONFIG.BOT.PREFIX}`,
+          inline: false
+        }
+      )
+      .setFooter({ text: `${CONFIG.BOT.NAME} 🤖 v${CONFIG.BOT.VERSION}` })
+      .setTimestamp();
+  }
+}
+
+// ============================================================================
+// LOGGER
+// ============================================================================
+
+class Logger {
+  static log(message, type = 'INFO') {
+    const timestamp = new Date().toLocaleString('id-ID');
+    const prefix = {
+      'INFO': '✅',
+      'ERROR': '❌',
+      'WARNING': '⚠️',
+      'DEBUG': '🔍',
+      'SUCCESS': '🎉'
+    }[type] || '📝';
+    
+    console.log(`[${timestamp}] ${prefix} [${type}] ${message}`);
+  }
+
+  static info(message) {
+    this.log(message, 'INFO');
+  }
+
+  static error(message, error = null) {
+    this.log(message, 'ERROR');
+    if (error) {
+      console.error(error);
+    }
+  }
+
+  static warning(message) {
+    this.log(message, 'WARNING');
+  }
+
+  static debug(message) {
+    this.log(message, 'DEBUG');
+  }
+
+  static success(message) {
+    this.log(message, 'SUCCESS');
+  }
+}
+
+// ============================================================================
+// TICKET OPERATIONS
+// ============================================================================
+
+class TicketOperations {
+  /**
+   * Archive ticket and delete channel
+   * @param {Object} ticket - Ticket data
+   * @param {string} status - Status (selesai/dibatalkan)
+   * @param {Guild} guild - Discord guild
+   */
+  static async archiveAndDelete(ticket, status, guild) {
     try {
-      const channel = await client.channels.fetch(SETUP_CHANNEL_ID);
-      
-      if (channel) {
-        const embed = new EmbedBuilder()
-          .setColor('#5865F2')
-          .setTitle('Welcome To Ticket Section')
-          .setDescription('Silakan pilih dibawah sesuai kebutuhanmu.')
-          .addFields(
-            {
-              name: 'LIST FEE MC BACA YA!',
-              value: '```' +
-                '1K — 9K : Rp 2,000\n' +
-                '10K — 49K : Rp 3,000\n' +
-                '50K — 99K : Rp 4,000\n' +
-                '100K — 150K : Rp 7,000\n' +
-                '150K — 300K : Rp 10,000\n' +
-                'Nominal diatas 300K, fee 5% dari nominal transaksi.' +
-                '```'
-            }
-          )
-          .setFooter({ text: 'NS88 BOT 🤖' })
-          .setTimestamp();
-
-        const button = new ActionRowBuilder()
-          .addComponents(
-            new ButtonBuilder()
-              .setCustomId('create_ticket')
-              .setLabel('ORDER REKBER/MC')
-              .setStyle(ButtonStyle.Primary)
-              .setEmoji('🎫')
-          );
-
-        await channel.send({ embeds: [embed], components: [button] });
-        console.log(`✅ Setup message berhasil dikirim ke channel: ${channel.name}`);
+      // Send to archive channel
+      if (CONFIG.CHANNELS.ARCHIVE) {
+        const archiveChannel = await guild.channels.fetch(CONFIG.CHANNELS.ARCHIVE);
+        
+        if (archiveChannel) {
+          const archiveEmbed = EmbedFactory.createArchiveEmbed(ticket, status);
+          await archiveChannel.send({ embeds: [archiveEmbed] });
+          Logger.success(`Ticket ${ticket.id} archived`);
+        }
       }
-    } catch (error) {
-      console.error('❌ Error mengirim setup message:', error.message);
-      console.log('💡 Pastikan SETUP_CHANNEL_ID sudah benar dan bot punya akses ke channel tersebut');
-    }
-  } else {
-    console.log('⚠️  SETUP_CHANNEL_ID belum diatur. Edit file index.js untuk mengatur channel auto-setup.');
-  }
-});
-
-// Event: Message create (untuk command)
-client.on('messageCreate', async (message) => {
-  // Ignore bot messages
-  if (message.author.bot) return;
-
-  // ========== FITUR SLOWMODE CUSTOM ==========
-  // Cek slowmode di channel jual-beli
-  if (WARNING_CHANNEL_IDS.includes(message.channel.id)) {
-    const userId = message.author.id;
-    const channelId = message.channel.id;
-    const key = `${userId}-${channelId}`;
-    
-    // Cek apakah user punya role Donatur
-    const isDonatur = message.member.roles.cache.some(role => role.name === DONATUR_ROLE_NAME);
-    const slowmodeDuration = isDonatur ? SLOWMODE_DONATUR : SLOWMODE_NON_DONATUR;
-    
-    // Cek waktu terakhir user kirim pesan di channel ini
-    const lastMessageTime = userLastMessageTime.get(key);
-    const now = Date.now();
-    
-    if (lastMessageTime) {
-      const timeDiff = (now - lastMessageTime) / 1000; // dalam detik
       
-      if (timeDiff < slowmodeDuration) {
-        // User kirim terlalu cepat!
-        const remainingTime = Math.ceil(slowmodeDuration - timeDiff);
-        const minutes = Math.floor(remainingTime / 60);
-        const seconds = remainingTime % 60;
+      // Delete channel after delay
+      const ticketChannel = await guild.channels.fetch(ticket.channelId);
+      if (ticketChannel) {
+        await ticketChannel.send(`⏳ Channel ini akan dihapus dalam ${CONFIG.TICKET.DELETE_DELAY_MS / 1000} detik...`);
         
-        let timeString = '';
-        if (minutes > 0) {
-          timeString = `${minutes} menit ${seconds} detik`;
-        } else {
-          timeString = `${seconds} detik`;
-        }
-        
-        // Hapus pesan user
-        try {
-          await message.delete();
-        } catch (error) {
-          console.log('Tidak bisa menghapus pesan user');
-        }
-        
-        // Kirim warning
-        const slowmodeWarning = await message.channel.send(
-          `${message.author} **Slowmode khusus non-booster:** tunggu **${timeString}** sebelum kirim lagi. ` +
-          `Atau boost server untuk cooldown menjadi **${SLOWMODE_DONATUR} detik**!!!`
-        );
-        
-        // Hapus warning setelah 5 detik
         setTimeout(async () => {
           try {
-            await slowmodeWarning.delete();
+            await ticketChannel.delete();
+            Logger.success(`Channel ${ticketChannel.name} deleted`);
           } catch (error) {
-            console.log('Warning sudah dihapus');
+            Logger.error('Failed to delete channel', error);
           }
-        }, 5000);
-        
-        console.log(`⏰ Slowmode: ${message.author.tag} kirim terlalu cepat di ${message.channel.name}`);
-        return; // Stop eksekusi, jangan proses pesan ini
+        }, CONFIG.TICKET.DELETE_DELAY_MS);
       }
+      
+      // Remove from ticket manager
+      ticketManager.delete(ticket.id);
+      
+    } catch (error) {
+      Logger.error('Error in archiveAndDelete', error);
+    }
+  }
+
+  /**
+   * Add user to ticket channel
+   * @param {Object} ticket - Ticket data
+   * @param {string} userId - User ID to add
+   * @param {Guild} guild - Discord guild
+   * @param {string} role - Role (buyer/seller)
+   */
+  static async addUserToTicket(ticket, userId, guild, role = 'buyer') {
+    try {
+      const selectedUser = await guild.members.fetch(userId);
+      
+      if (selectedUser.user.bot) {
+        throw new Error('Cannot add bot as user');
+      }
+
+      const ticketChannel = await guild.channels.fetch(ticket.channelId);
+      
+      // Set permissions
+      await ticketChannel.permissionOverwrites.create(userId, {
+        ViewChannel: true,
+        SendMessages: true,
+        ReadMessageHistory: true,
+        AttachFiles: true
+      });
+
+      // Add to allowed users
+      if (!ticket.allowedUsers.includes(userId)) {
+        ticket.allowedUsers.push(userId);
+        ticketManager.update(ticket.id, { allowedUsers: ticket.allowedUsers });
+      }
+
+      const roleEmoji = role === 'buyer' ? '👤' : '💼';
+      const roleText = role === 'buyer' ? 'Buyer' : 'Seller';
+      
+      await ticketChannel.send(
+        `${roleEmoji} **${selectedUser.user.tag}** telah ditambahkan sebagai **${roleText}**`
+      );
+
+      Logger.success(`User ${selectedUser.user.tag} added as ${roleText} to ${ticket.id}`);
+      
+      return selectedUser;
+      
+    } catch (error) {
+      Logger.error('Error adding user to ticket', error);
+      throw error;
+    }
+  }
+
+  /**
+   * Update ticket status
+   * @param {string} ticketId - Ticket ID
+   * @param {string} status - New status
+   * @param {Channel} channel - Discord channel
+   */
+  static async updateStatus(ticketId, status, channel) {
+    try {
+      const ticket = ticketManager.get(ticketId);
+      if (!ticket) return;
+
+      ticketManager.update(ticketId, { status });
+
+      const messages = await channel.messages.fetch({ limit: 10 });
+      const ticketMessage = messages.find(m => 
+        m.embeds[0]?.footer?.text?.includes(ticketId)
+      );
+      
+      if (ticketMessage) {
+        const isCompleted = status === 'selesai';
+        const color = isCompleted ? CONFIG.COLORS.SUCCESS : CONFIG.COLORS.DANGER;
+        const title = isCompleted ? '✅ ORDER REKBER/MC - SELESAI' : '❌ ORDER REKBER/MC - DIBATALKAN';
+        
+        const updatedEmbed = EmbedBuilder.from(ticketMessage.embeds[0])
+          .setColor(color)
+          .setTitle(title);
+          
+        await ticketMessage.edit({ embeds: [updatedEmbed], components: [] });
+        Logger.success(`Ticket ${ticketId} status updated to ${status}`);
+      }
+    } catch (error) {
+      Logger.error('Error updating ticket status', error);
+    }
+  }
+}
+
+// ============================================================================
+// SLOWMODE HANDLER
+// ============================================================================
+
+class SlowmodeHandler {
+  /**
+   * Check and handle slowmode
+   * @param {Message} message - Discord message
+   * @returns {boolean} - True if message should be processed
+   */
+  static async handle(message) {
+    if (!CONFIG.CHANNELS.WARNING.includes(message.channel.id)) {
+      return true;
+    }
+
+    const userId = message.author.id;
+    const channelId = message.channel.id;
+    
+    const isDonatur = Utils.hasRole(message.member, CONFIG.DONATUR.ROLE_NAME);
+    const slowmodeDuration = isDonatur 
+      ? CONFIG.DONATUR.SLOWMODE_SECONDS 
+      : CONFIG.NON_DONATUR.SLOWMODE_SECONDS;
+    
+    const remainingTime = slowmodeManager.getRemainingTime(userId, channelId, slowmodeDuration);
+    
+    if (remainingTime > 0) {
+      // User sent message too quickly
+      try {
+        await message.delete();
+      } catch (error) {
+        Logger.debug('Cannot delete user message - missing permissions');
+      }
+      
+      const timeString = Utils.formatTime(remainingTime);
+      const slowmodeWarning = await message.channel.send(
+        `${message.author} **⏰ Slowmode aktif:** tunggu **${timeString}** sebelum kirim pesan lagi!\n` +
+        `💡 Boost server untuk cooldown lebih cepat **(${CONFIG.DONATUR.SLOWMODE_SECONDS} detik)**!`
+      );
+      
+      Utils.deleteMessageAfterDelay(slowmodeWarning, 5000);
+      Logger.info(`Slowmode: ${message.author.tag} too fast in ${message.channel.name}`);
+      
+      return false;
     }
     
-    // Update waktu terakhir user kirim pesan
-    userLastMessageTime.set(key, now);
-    console.log(`✅ Pesan dari ${message.author.tag} diizinkan (${isDonatur ? 'Donatur' : 'Non-Donatur'})`);
+    // Update last message time
+    slowmodeManager.setLastMessageTime(userId, channelId);
+    Logger.debug(`Message allowed from ${message.author.tag} (${isDonatur ? 'Donatur' : 'Non-Donatur'})`);
+    
+    return true;
   }
-  // ========== END FITUR SLOWMODE CUSTOM ==========
+}
 
-  // ========== FITUR AUTO-WARNING REKBER/MC ==========
-  // Auto-warning SETIAP pesan di channel yang ditentukan
-  if (WARNING_CHANNEL_IDS.includes(message.channel.id)) {
+// ============================================================================
+// WARNING HANDLER
+// ============================================================================
+
+class WarningHandler {
+  /**
+   * Handle auto-warning in specified channels
+   * @param {Message} message - Discord message
+   * @returns {boolean} - True if warning was sent
+   */
+  static async handle(message) {
+    if (!CONFIG.CHANNELS.WARNING.includes(message.channel.id)) {
+      return false;
+    }
+
     try {
-      // LANGKAH 1: Hapus pesan user SEGERA
-      try {
-        // await message.delete();
-        console.log(`🗑️ Pesan user ${message.author.tag} dihapus di ${message.channel.name}`);
-      } catch (deleteError) {
-        console.error('❌ Error menghapus pesan user:', deleteError.message);
-        // Cek apakah bot punya permission
-        if (!message.channel.permissionsFor(client.user).has(PermissionFlagsBits.ManageMessages)) {
-          console.error('❌ Bot tidak punya permission "Manage Messages" di channel ini!');
-        }
-      }
-
-      // LANGKAH 2: Hapus warning lama jika ada
-      const lastWarningId = lastWarningMessages.get(message.channel.id);
+      // Delete old warning
+      const lastWarningId = slowmodeManager.getWarningMessage(message.channel.id);
       if (lastWarningId) {
         try {
           const oldWarning = await message.channel.messages.fetch(lastWarningId);
           await oldWarning.delete();
-          console.log(`🗑️ Warning lama dihapus di ${message.channel.name}`);
         } catch (error) {
-          console.log('⚠️ Warning lama sudah tidak ada atau sudah dihapus');
+          Logger.debug('Old warning already deleted');
         }
       }
 
-      // LANGKAH 3: Kirim warning baru
-      const warningEmbed = new EmbedBuilder()
-        .setColor('#FF0000')
-        .setTitle('⚠️ PERINGATAN: Gunakan Rekber/MC Resmi!')
-        .setDescription(
-          `**Jangan lupa menggunakan rekber / mc / mm di** <#${TICKET_REKBER_CHANNEL_ID}> **agar tidak terkena scam**\n\n` +
-          `⚠️ **PENTING:**\n` +
-          `• Gunakan layanan rekber/MC resmi untuk keamanan transaksi\n` +
-          `• Hati-hati dengan penipuan!\n` +
-          `• Laporkan aktivitas mencurigakan kepada admin\n\n` +
-          `💡 **Tips Aman Bertransaksi:**\n` +
-          `• Selalu gunakan middleman/rekber resmi\n` +
-          `• Jangan percaya janji-janji yang terlalu bagus\n` +
-          `• Verifikasi identitas penjual/pembeli\n` +
-          `• Simpan bukti transaksi`
-        )
-        .setFooter({ text: 'NS88 BOT 🤖 - Auto Warning System' })
-        .setTimestamp();
-
+      // Send new warning
+      const warningEmbed = EmbedFactory.createWarningEmbed();
       const warningMessage = await message.channel.send({ embeds: [warningEmbed] });
       
-      // LANGKAH 4: Simpan ID warning baru
-      lastWarningMessages.set(message.channel.id, warningMessage.id);
+      slowmodeManager.setWarningMessage(message.channel.id, warningMessage.id);
+      Logger.info(`Auto-warning sent in ${message.channel.name}`);
       
-      console.log(`✅ Auto-warning dikirim di ${message.channel.name} (ID: ${warningMessage.id})`);
+      return true;
     } catch (error) {
-      console.error('❌ Error dalam auto-warning system:', error);
+      Logger.error('Error in warning handler', error);
+      return false;
     }
-    
-    // IMPORTANT: Return agar tidak proses pesan ini lebih lanjut
-    return;
   }
-  // ========== END FITUR AUTO-WARNING ==========
+}
 
-  // Deteksi jika pesan dikirim di channel ticket dan ada attachment (screenshot)
-  if (message.channel.name && message.channel.name.startsWith('ticket-ticket-')) {
-    if (message.attachments.size > 0) {
-      // Ada attachment (screenshot/gambar)
-      const hasImage = message.attachments.some(att => 
-        att.contentType && att.contentType.startsWith('image/')
+// ============================================================================
+// PAYMENT PROOF HANDLER
+// ============================================================================
+
+class PaymentProofHandler {
+  /**
+   * Handle payment proof detection
+   * @param {Message} message - Discord message
+   */
+  static async handle(message) {
+    // Check if in ticket channel
+    if (!message.channel.name || !message.channel.name.startsWith(CONFIG.TICKET.CHANNEL_PREFIX)) {
+      return;
+    }
+
+    // Check if message has image attachment
+    if (message.attachments.size === 0) {
+      return;
+    }
+
+    const hasImage = message.attachments.some(att => 
+      att.contentType && att.contentType.startsWith('image/')
+    );
+
+    if (!hasImage) {
+      return;
+    }
+
+    try {
+      // Send confirmation to user
+      const replyEmbed = EmbedFactory.createPaymentProofEmbed(message.author.username);
+      await message.reply({ embeds: [replyEmbed] });
+
+      // Notify admin
+      await this.notifyAdmin(message);
+      
+      Logger.success(`Payment proof received from ${message.author.tag} in ${message.channel.name}`);
+      
+    } catch (error) {
+      Logger.error('Error handling payment proof', error);
+    }
+  }
+
+  /**
+   * Notify admin about payment proof
+   * @param {Message} message - Discord message
+   */
+  static async notifyAdmin(message) {
+    const adminUser = Utils.findUserByUsername(message.guild, CONFIG.ADMIN.USERNAME);
+
+    if (adminUser) {
+      await message.channel.send(
+        `🔔 **Notifikasi untuk ${adminUser}:**\n\n` +
+        `${message.author} telah mengirim **bukti pembayaran**. Mohon segera dicek dan diverifikasi!\n` +
+        `⏱️ *Waktu: ${new Date().toLocaleTimeString('id-ID')}*`
       );
+      Logger.info(`Admin ${adminUser.user.tag} notified`);
+    } else {
+      // Fallback: notify all admins
+      const admins = Utils.getAdmins(message.guild);
 
-      if (hasImage) {
-        // Auto-reply
-        const replyEmbed = new EmbedBuilder()
-          .setColor('#00FF00')
-          .setTitle('✅ Bukti Pembayaran Diterima')
-          .setDescription(
-            `Terima kasih **${message.author.username}**!\n\n` +
-            `Bukti pembayaran Anda telah kami terima.\n` +
-            `Admin/MC akan segera mengecek dan memverifikasi pembayaran Anda.\n\n` +
-            `Mohon tunggu sebentar... 🕐`
-          )
-          .setFooter({ text: 'NS88 BOT 🤖 - Auto Response' })
-          .setTimestamp();
-
-        await message.reply({ embeds: [replyEmbed] });
-
-        // Cari user dengan username yang ditentukan (case insensitive)
-        const adminUser = message.guild.members.cache.find(member => 
-          member.user.username.toLowerCase() === ADMIN_USERNAME.toLowerCase() && 
-          !member.user.bot
+      if (admins.size > 0) {
+        const adminMentions = admins.map(admin => admin.user).join(' ');
+        await message.channel.send(
+          `🔔 **Notifikasi untuk Admin:**\n${adminMentions}\n\n` +
+          `${message.author} telah mengirim **bukti pembayaran**. Mohon segera dicek dan diverifikasi!\n` +
+          `⚠️ *User "${CONFIG.ADMIN.USERNAME}" tidak ditemukan.*`
         );
-
-        if (adminUser) {
-          // Mention user admin
-          await message.channel.send(
-            `🔔 **Notifikasi untuk ${adminUser}:**\n\n` +
-            `${message.author} telah mengirim bukti pembayaran. Mohon segera dicek dan diverifikasi!`
-          );
-          console.log(`🔔 User ${adminUser.user.tag} di-mention untuk bukti pembayaran`);
-        } else {
-          // Fallback: mention semua admin jika user dengan username tersebut tidak ditemukan
-          const admins = message.guild.members.cache.filter(member => 
-            member.permissions.has(PermissionFlagsBits.Administrator) && !member.user.bot
-          );
-
-          if (admins.size > 0) {
-            const adminMentions = admins.map(admin => admin.user).join(' ');
-            await message.channel.send(
-              `🔔 **Notifikasi untuk Admin:**\n` +
-              `${adminMentions}\n\n` +
-              `${message.author} telah mengirim bukti pembayaran. Mohon segera dicek dan diverifikasi!\n\n` +
-              `⚠️ *User "${ADMIN_USERNAME}" tidak ditemukan. Silakan periksa setting ADMIN_USERNAME di file bot.*`
-            );
-          } else {
-            // Jika tidak ada admin sama sekali
-            await message.channel.send(
-              `🔔 **Notifikasi:**\n` +
-              `${message.author} telah mengirim bukti pembayaran. Mohon segera dicek dan diverifikasi!\n\n` +
-              `⚠️ *User "${ADMIN_USERNAME}" tidak ditemukan dan tidak ada admin lain di server.*`
-            );
-          }
-        }
-
-        console.log(`📸 Bukti pembayaran diterima dari ${message.author.tag} di ${message.channel.name}`);
+        Logger.warning(`Specific admin not found, notified all admins`);
       }
     }
   }
+}
 
-  // Command: !setup-ticket
-  if (message.content === '!setup-ticket') {
-    // Cek permission admin
-    if (!message.member.permissions.has(PermissionFlagsBits.Administrator)) {
-      return message.reply('❌ Hanya admin yang bisa menggunakan command ini!');
+// ============================================================================
+// COMMAND HANDLER
+// ============================================================================
+
+class CommandHandler {
+  /**
+   * Handle text commands
+   * @param {Message} message - Discord message
+   */
+  static async handle(message) {
+    if (!message.content.startsWith(CONFIG.BOT.PREFIX)) {
+      return;
     }
 
-    const embed = new EmbedBuilder()
-      .setColor('#5865F2')
-      .setTitle('Welcome To Ticket Section')
-      .setDescription('Silakan pilih dibawah sesuai kebutuhanmu.')
-      .addFields(
-        {
-          name: 'LIST FEE MC BACA YA!',
-          value: '```' +
-            '1K — 9K : Rp 2,000\n' +
-            '10K — 49K : Rp 3,000\n' +
-            '50K — 99K : Rp 4,000\n' +
-            '100K — 150K : Rp 7,000\n' +
-            '150K — 300K : Rp 10,000\n' +
-            'Nominal diatas 300K, fee 5% dari nominal transaksi.' +
-            '```'
-        }
-      )
-      .setFooter({ text: 'NS88 BOT 🤖' })
-      .setTimestamp();
+    const args = message.content.slice(CONFIG.BOT.PREFIX.length).trim().split(/ +/);
+    const command = args.shift().toLowerCase();
 
+    switch (command) {
+      case 'setup-ticket':
+        await this.setupTicket(message);
+        break;
+      case 'help':
+        await this.showHelp(message);
+        break;
+      default:
+        break;
+    }
+  }
+
+  /**
+   * Setup ticket command
+   * @param {Message} message - Discord message
+   */
+  static async setupTicket(message) {
+    if (!message.member.permissions.has(PermissionFlagsBits.Administrator)) {
+      return message.reply('❌ **Error:** Hanya admin yang bisa menggunakan command ini!');
+    }
+
+    const embed = EmbedFactory.createSetupEmbed();
     const button = new ActionRowBuilder()
       .addComponents(
         new ButtonBuilder()
@@ -423,479 +861,643 @@ client.on('messageCreate', async (message) => {
 
     await message.channel.send({ embeds: [embed], components: [button] });
     message.delete().catch(() => {});
+    Logger.success(`Setup ticket executed by ${message.author.tag}`);
   }
 
-  // Command: !help
-  if (message.content === '!help') {
-    const helpEmbed = new EmbedBuilder()
-      .setColor('#5865F2')
-      .setTitle('📖 NS88 BOT Commands')
-      .setDescription('Daftar command yang tersedia:')
-      .addFields(
-        { name: '!setup-ticket', value: 'Setup sistem ticket (Admin only)' },
-        { name: '!help', value: 'Tampilkan pesan ini' }
-      )
-      .setFooter({ text: 'NS88 BOT 🤖' });
-    
+  /**
+   * Show help command
+   * @param {Message} message - Discord message
+   */
+  static async showHelp(message) {
+    const helpEmbed = EmbedFactory.createHelpEmbed();
     await message.reply({ embeds: [helpEmbed] });
+    Logger.info(`Help command used by ${message.author.tag}`);
+  }
+}
+
+// ============================================================================
+// INTERACTION HANDLER
+// ============================================================================
+
+class InteractionHandler {
+  /**
+   * Handle button interactions
+   * @param {Interaction} interaction - Discord interaction
+   */
+  static async handleButton(interaction) {
+    const { customId } = interaction;
+
+    try {
+      if (customId === 'create_ticket') {
+        await this.showTicketModal(interaction);
+      } else if (customId.startsWith('add_buyer_')) {
+        await this.showBuyerSelect(interaction);
+      } else if (customId.startsWith('add_seller_')) {
+        await this.showSellerSelect(interaction);
+      } else if (customId.startsWith('complete_')) {
+        await this.completeTicket(interaction);
+      } else if (customId.startsWith('cancel_')) {
+        await this.cancelTicket(interaction);
+      }
+    } catch (error) {
+      Logger.error('Error handling button interaction', error);
+      await this.sendErrorResponse(interaction, 'Terjadi kesalahan saat memproses button.');
+    }
+  }
+
+  /**
+   * Show ticket creation modal
+   * @param {Interaction} interaction - Discord interaction
+   */
+  static async showTicketModal(interaction) {
+    const modal = new ModalBuilder()
+      .setCustomId('ticket_form')
+      .setTitle('📝 Formulir ORDER REKBER/MC');
+
+    const inputs = [
+      { 
+        id: 'buyer_username', 
+        label: 'USERNAME DISCORD PEMBELI', 
+        placeholder: 'Contoh: username#0000',
+        style: TextInputStyle.Short
+      },
+      { 
+        id: 'seller_username', 
+        label: 'USERNAME DISCORD PENJUAL', 
+        placeholder: 'Contoh: username#0000',
+        style: TextInputStyle.Short
+      },
+      { 
+        id: 'item', 
+        label: 'BARANG/JASA YANG DITRANSAKSIKAN', 
+        placeholder: 'Contoh: Akun Roblox Level 50 + 10K Robux',
+        style: TextInputStyle.Short
+      },
+      { 
+        id: 'nominal', 
+        label: 'NOMINAL TRANSAKSI (angka saja)', 
+        placeholder: 'Contoh: 50000 (tanpa titik atau koma)',
+        style: TextInputStyle.Short
+      },
+      { 
+        id: 'payment_method', 
+        label: 'METODE PEMBAYARAN', 
+        placeholder: 'Contoh: DANA, GoPay, OVO, Transfer BCA',
+        style: TextInputStyle.Short
+      }
+    ];
+
+    const rows = inputs.map(input => {
+      const textInput = new TextInputBuilder()
+        .setCustomId(input.id)
+        .setLabel(input.label)
+        .setStyle(input.style)
+        .setPlaceholder(input.placeholder)
+        .setRequired(true);
+      return new ActionRowBuilder().addComponents(textInput);
+    });
+
+    modal.addComponents(...rows);
+    await interaction.showModal(modal);
+    Logger.info(`Ticket modal shown to ${interaction.user.tag}`);
+  }
+
+  /**
+   * Show buyer selection menu
+   * @param {Interaction} interaction - Discord interaction
+   */
+  static async showBuyerSelect(interaction) {
+    const ticketId = interaction.customId.split('_')[2];
+    const ticket = ticketManager.get(ticketId);
+
+    if (!ticket) {
+      return interaction.reply({ 
+        content: '❌ **Error:** Ticket tidak ditemukan!', 
+        flags: 64 
+      });
+    }
+
+    const userSelectMenu = new UserSelectMenuBuilder()
+      .setCustomId(`select_buyer_${ticketId}`)
+      .setPlaceholder('🔍 Pilih user untuk ditambahkan sebagai Buyer')
+      .setMinValues(1)
+      .setMaxValues(1);
+
+    const row = new ActionRowBuilder().addComponents(userSelectMenu);
+
+    await interaction.reply({
+      content: '👤 **Pilih user sebagai Buyer:**\n💡 Gunakan search bar untuk mencari user dengan cepat!',
+      components: [row],
+      flags: 64
+    });
+  }
+
+  /**
+   * Show seller selection menu
+   * @param {Interaction} interaction - Discord interaction
+   */
+  static async showSellerSelect(interaction) {
+    const ticketId = interaction.customId.split('_')[2];
+    const ticket = ticketManager.get(ticketId);
+
+    if (!ticket) {
+      return interaction.reply({ 
+        content: '❌ **Error:** Ticket tidak ditemukan!', 
+        flags: 64 
+      });
+    }
+
+    const userSelectMenu = new UserSelectMenuBuilder()
+      .setCustomId(`select_seller_${ticketId}`)
+      .setPlaceholder('🔍 Pilih user untuk ditambahkan sebagai Seller')
+      .setMinValues(1)
+      .setMaxValues(1);
+
+    const row = new ActionRowBuilder().addComponents(userSelectMenu);
+
+    await interaction.reply({
+      content: '💼 **Pilih user sebagai Seller:**\n💡 Gunakan search bar untuk mencari user dengan cepat!',
+      components: [row],
+      flags: 64
+    });
+  }
+
+  /**
+   * Complete ticket
+   * @param {Interaction} interaction - Discord interaction
+   */
+  static async completeTicket(interaction) {
+    if (!interaction.member.permissions.has(PermissionFlagsBits.Administrator)) {
+      return interaction.reply({ 
+        content: '❌ **Error:** Hanya Admin yang bisa menandai transaksi selesai!', 
+        flags: 64
+      });
+    }
+
+    const ticketId = interaction.customId.split('_')[1];
+    const ticket = ticketManager.get(ticketId);
+
+    if (!ticket) {
+      return interaction.reply({ 
+        content: '❌ **Error:** Ticket tidak ditemukan!', 
+        flags: 64 
+      });
+    }
+
+    await interaction.reply(`✅ **Transaksi ${ticketId} ditandai selesai oleh ${interaction.user.tag}!**`);
+    await TicketOperations.updateStatus(ticketId, 'selesai', interaction.channel);
+    await TicketOperations.archiveAndDelete(ticket, 'selesai', interaction.guild);
+    
+    Logger.success(`Ticket ${ticketId} completed by ${interaction.user.tag}`);
+  }
+
+  /**
+   * Cancel ticket
+   * @param {Interaction} interaction - Discord interaction
+   */
+  static async cancelTicket(interaction) {
+    const ticketId = interaction.customId.split('_')[1];
+    const ticket = ticketManager.get(ticketId);
+
+    if (!ticket) {
+      return interaction.reply({ 
+        content: '❌ **Error:** Ticket tidak ditemukan!', 
+        flags: 64 
+      });
+    }
+
+    const isAdmin = interaction.member.permissions.has(PermissionFlagsBits.Administrator);
+    const isAllowedUser = ticket.allowedUsers && ticket.allowedUsers.includes(interaction.user.id);
+
+    if (!isAdmin && !isAllowedUser) {
+      return interaction.reply({ 
+        content: '❌ **Error:** Hanya Admin, Buyer, atau Seller yang bisa membatalkan transaksi!', 
+        flags: 64
+      });
+    }
+
+    await interaction.reply(`❌ **Transaksi ${ticketId} dibatalkan oleh ${interaction.user.tag}!**`);
+    await TicketOperations.updateStatus(ticketId, 'dibatalkan', interaction.channel);
+    await TicketOperations.archiveAndDelete(ticket, 'dibatalkan', interaction.guild);
+    
+    Logger.warning(`Ticket ${ticketId} cancelled by ${interaction.user.tag}`);
+  }
+
+  /**
+   * Handle user select menu
+   * @param {Interaction} interaction - Discord interaction
+   */
+  static async handleUserSelect(interaction) {
+    const { customId, values } = interaction;
+
+    try {
+      if (customId.startsWith('select_buyer_')) {
+        await this.addBuyer(interaction, values[0]);
+      } else if (customId.startsWith('select_seller_')) {
+        await this.addSeller(interaction, values[0]);
+      }
+    } catch (error) {
+      Logger.error('Error handling user select', error);
+      await interaction.update({
+        content: '❌ **Error:** Terjadi kesalahan saat menambahkan user!',
+        components: []
+      });
+    }
+  }
+
+  /**
+   * Add buyer to ticket
+   * @param {Interaction} interaction - Discord interaction
+   * @param {string} userId - User ID
+   */
+  static async addBuyer(interaction, userId) {
+    const ticketId = interaction.customId.split('_')[2];
+    const ticket = ticketManager.get(ticketId);
+
+    if (!ticket) {
+      return interaction.update({ 
+        content: '❌ **Error:** Ticket tidak ditemukan!', 
+        components: [] 
+      });
+    }
+
+    try {
+      const selectedUser = await TicketOperations.addUserToTicket(
+        ticket, 
+        userId, 
+        interaction.guild, 
+        'buyer'
+      );
+
+      await interaction.update({
+        content: `✅ **${selectedUser.user.tag}** berhasil ditambahkan sebagai **Buyer**!`,
+        components: []
+      });
+    } catch (error) {
+      if (error.message === 'Cannot add bot as user') {
+        await interaction.update({
+          content: '❌ **Error:** Tidak bisa menambahkan bot sebagai Buyer!',
+          components: []
+        });
+      } else {
+        throw error;
+      }
+    }
+  }
+
+  /**
+   * Add seller to ticket
+   * @param {Interaction} interaction - Discord interaction
+   * @param {string} userId - User ID
+   */
+  static async addSeller(interaction, userId) {
+    const ticketId = interaction.customId.split('_')[2];
+    const ticket = ticketManager.get(ticketId);
+
+    if (!ticket) {
+      return interaction.update({ 
+        content: '❌ **Error:** Ticket tidak ditemukan!', 
+        components: [] 
+      });
+    }
+
+    try {
+      const selectedUser = await TicketOperations.addUserToTicket(
+        ticket, 
+        userId, 
+        interaction.guild, 
+        'seller'
+      );
+
+      await interaction.update({
+        content: `✅ **${selectedUser.user.tag}** berhasil ditambahkan sebagai **Seller**!`,
+        components: []
+      });
+    } catch (error) {
+      if (error.message === 'Cannot add bot as user') {
+        await interaction.update({
+          content: '❌ **Error:** Tidak bisa menambahkan bot sebagai Seller!',
+          components: []
+        });
+      } else {
+        throw error;
+      }
+    }
+  }
+
+  /**
+   * Handle modal submit
+   * @param {Interaction} interaction - Discord interaction
+   */
+  static async handleModalSubmit(interaction) {
+    if (interaction.customId !== 'ticket_form') {
+      return;
+    }
+
+    try {
+      await interaction.deferReply({ flags: 64 });
+
+      const buyer = interaction.fields.getTextInputValue('buyer_username');
+      const seller = interaction.fields.getTextInputValue('seller_username');
+      const item = interaction.fields.getTextInputValue('item');
+      const nominalRaw = interaction.fields.getTextInputValue('nominal').replace(/\D/g, '');
+      const nominal = parseInt(nominalRaw);
+      const paymentMethod = interaction.fields.getTextInputValue('payment_method');
+
+      // Validate nominal
+      if (isNaN(nominal) || nominal < CONFIG.TICKET.MIN_NOMINAL) {
+        return interaction.editReply({ 
+          content: `❌ **Error:** Nominal tidak valid! Minimal ${Utils.formatRupiah(CONFIG.TICKET.MIN_NOMINAL)}` 
+        });
+      }
+
+      // Calculate fee and total
+      const fee = Utils.calculateFee(nominal);
+      const total = nominal + fee;
+
+      // Create ticket channel
+      const ticketChannel = await this.createTicketChannel(interaction);
+
+      if (!ticketChannel) {
+        return interaction.editReply({ 
+          content: '❌ **Error:** Gagal membuat channel ticket. Pastikan bot punya permission "Manage Channels".' 
+        });
+      }
+
+      // Create ticket
+      const ticket = ticketManager.create({
+        buyer,
+        seller,
+        item,
+        nominal,
+        fee,
+        total,
+        paymentMethod,
+        channelId: ticketChannel.id,
+        creatorId: interaction.user.id,
+        allowedUsers: [interaction.user.id]
+      });
+
+      // Send ticket embed
+      const ticketEmbed = EmbedFactory.createTicketEmbed(ticket);
+      const buttons = this.createTicketButtons(ticket.id);
+
+      await ticketChannel.send({ embeds: [ticketEmbed], components: [buttons] });
+
+      // Reply to user
+      const successReply = await interaction.editReply({ 
+        content: `✅ **Ticket berhasil dibuat!**\n📍 Silakan cek channel ${ticketChannel}` 
+      });
+
+      Utils.deleteMessageAfterDelay(successReply, 5000);
+      Logger.success(`Ticket ${ticket.id} created by ${interaction.user.tag}`);
+
+    } catch (error) {
+      Logger.error('Error handling modal submit', error);
+      
+      if (interaction.deferred) {
+        await interaction.editReply({ 
+          content: `❌ **Error:** ${error.message || 'Terjadi kesalahan saat membuat ticket.'}` 
+        });
+      } else {
+        await interaction.reply({ 
+          content: '❌ **Error:** Terjadi kesalahan!', 
+          flags: 64
+        });
+      }
+    }
+  }
+
+  /**
+   * Create ticket channel
+   * @param {Interaction} interaction - Discord interaction
+   * @returns {Channel|null}
+   */
+  static async createTicketChannel(interaction) {
+    try {
+      const ticketChannel = await interaction.guild.channels.create({
+        name: `${CONFIG.TICKET.CHANNEL_PREFIX}${ticketManager.counter}`,
+        type: ChannelType.GuildText,
+        parent: interaction.channel.parentId,
+        topic: `Ticket dibuat oleh ${interaction.user.tag}`,
+        permissionOverwrites: [
+          {
+            id: interaction.guild.id,
+            deny: [PermissionFlagsBits.ViewChannel],
+          },
+          {
+            id: interaction.user.id,
+            allow: [
+              PermissionFlagsBits.ViewChannel,
+              PermissionFlagsBits.SendMessages,
+              PermissionFlagsBits.AttachFiles,
+              PermissionFlagsBits.ReadMessageHistory
+            ],
+          },
+          {
+            id: client.user.id,
+            allow: [
+              PermissionFlagsBits.ViewChannel,
+              PermissionFlagsBits.SendMessages,
+              PermissionFlagsBits.EmbedLinks,
+              PermissionFlagsBits.AttachFiles,
+              PermissionFlagsBits.ReadMessageHistory,
+              PermissionFlagsBits.ManageMessages
+            ],
+          },
+        ],
+      });
+
+      Logger.success(`Channel created: ${ticketChannel.name}`);
+      return ticketChannel;
+      
+    } catch (error) {
+      Logger.error('Error creating ticket channel', error);
+      return null;
+    }
+  }
+
+  /**
+   * Create ticket action buttons
+   * @param {string} ticketId - Ticket ID
+   * @returns {ActionRowBuilder}
+   */
+  static createTicketButtons(ticketId) {
+    return new ActionRowBuilder()
+      .addComponents(
+        new ButtonBuilder()
+          .setCustomId(`add_buyer_${ticketId}`)
+          .setLabel('Tambah Buyer')
+          .setStyle(ButtonStyle.Primary)
+          .setEmoji('👤'),
+        new ButtonBuilder()
+          .setCustomId(`add_seller_${ticketId}`)
+          .setLabel('Tambah Seller')
+          .setStyle(ButtonStyle.Primary)
+          .setEmoji('💼'),
+        new ButtonBuilder()
+          .setCustomId(`complete_${ticketId}`)
+          .setLabel('Selesai')
+          .setStyle(ButtonStyle.Success)
+          .setEmoji('✅'),
+        new ButtonBuilder()
+          .setCustomId(`cancel_${ticketId}`)
+          .setLabel('Batalkan')
+          .setStyle(ButtonStyle.Danger)
+          .setEmoji('❌')
+      );
+  }
+
+  /**
+   * Send error response
+   * @param {Interaction} interaction - Discord interaction
+   * @param {string} message - Error message
+   */
+  static async sendErrorResponse(interaction, message) {
+    if (interaction.replied || interaction.deferred) {
+      await interaction.followUp({ content: `❌ ${message}`, flags: 64 });
+    } else {
+      await interaction.reply({ content: `❌ ${message}`, flags: 64 });
+    }
+  }
+}
+
+// ============================================================================
+// EVENT LISTENERS
+// ============================================================================
+
+// Bot ready event
+client.once('clientReady', async (c) => {
+  Logger.success(`Bot ${c.user.tag} is online!`);
+  Logger.info(`Connected to ${c.guilds.cache.size} server(s)`);
+  Logger.info(`Version: ${CONFIG.BOT.VERSION}`);
+  
+  // Set bot activity
+  c.user.setActivity(CONFIG.BOT.ACTIVITY, { type: CONFIG.BOT.ACTIVITY_TYPE });
+  
+  // Auto-setup in designated channel
+  if (CONFIG.CHANNELS.SETUP) {
+    try {
+      const channel = await c.channels.fetch(CONFIG.CHANNELS.SETUP);
+      
+      if (channel) {
+        const embed = EmbedFactory.createSetupEmbed();
+        const button = new ActionRowBuilder()
+          .addComponents(
+            new ButtonBuilder()
+              .setCustomId('create_ticket')
+              .setLabel('ORDER REKBER/MC')
+              .setStyle(ButtonStyle.Primary)
+              .setEmoji('🎫')
+          );
+
+        await channel.send({ embeds: [embed], components: [button] });
+        Logger.success(`Setup message sent to: ${channel.name}`);
+      }
+    } catch (error) {
+      Logger.error('Failed to send setup message', error);
+    }
+  } else {
+    Logger.warning('SETUP_CHANNEL_ID not configured');
   }
 });
 
-// Event: Interaction create (untuk button, modal, dll)
-client.on('interactionCreate', async (interaction) => {
+// Message create event
+client.on('messageCreate', async (message) => {
+  // Ignore bot messages
+  if (message.author.bot) return;
+
   try {
-    // Button: Create Ticket
-    if (interaction.isButton() && interaction.customId === 'create_ticket') {
-      const modal = new ModalBuilder()
-        .setCustomId('ticket_form')
-        .setTitle('Formulir ORDER REKBER/MC');
+    // Check slowmode
+    const shouldProcess = await SlowmodeHandler.handle(message);
+    if (!shouldProcess) return;
 
-      const buyerInput = new TextInputBuilder()
-        .setCustomId('buyer_username')
-        .setLabel('USERNAME DISCORD PEMBELI')
-        .setStyle(TextInputStyle.Short)
-        .setPlaceholder('username#0000')
-        .setRequired(true);
+    // Auto-warning system
+    const warningHandled = await WarningHandler.handle(message);
+    if (warningHandled) return;
 
-      const sellerInput = new TextInputBuilder()
-        .setCustomId('seller_username')
-        .setLabel('USERNAME DISCORD PENJUAL')
-        .setStyle(TextInputStyle.Short)
-        .setPlaceholder('username#0000')
-        .setRequired(true);
+    // Payment proof detection
+    await PaymentProofHandler.handle(message);
 
-      const itemInput = new TextInputBuilder()
-        .setCustomId('item')
-        .setLabel('BARANG APA')
-        .setStyle(TextInputStyle.Short)
-        .setPlaceholder('Contoh: Akun Roblox Level 50')
-        .setRequired(true);
-
-      const nominalInput = new TextInputBuilder()
-        .setCustomId('nominal')
-        .setLabel('NOMINAL (cth: 30000)')
-        .setStyle(TextInputStyle.Short)
-        .setPlaceholder('Gunakan format: 30000 atau 1000000')
-        .setRequired(true);
-
-      const paymentInput = new TextInputBuilder()
-        .setCustomId('payment_method')
-        .setLabel('PEMBAYARAN VIA APA')
-        .setStyle(TextInputStyle.Short)
-        .setPlaceholder('Contoh: DANA, GoPay, OVO, Transfer Bank')
-        .setRequired(true);
-
-      const rows = [buyerInput, sellerInput, itemInput, nominalInput, paymentInput].map(
-        input => new ActionRowBuilder().addComponents(input)
-      );
-
-      modal.addComponents(...rows);
-      await interaction.showModal(modal);
-    }
-
-    // Button: Tambah Buyer
-    if (interaction.isButton() && interaction.customId.startsWith('add_buyer_')) {
-      try {
-        const ticketId = interaction.customId.split('_')[2];
-        const ticket = tickets.get(ticketId);
-
-        if (!ticket) {
-          return interaction.reply({ content: '❌ Ticket tidak ditemukan!', flags: 64 });
-        }
-
-        const userSelectMenu = new UserSelectMenuBuilder()
-          .setCustomId(`select_buyer_${ticketId}`)
-          .setPlaceholder('🔍 Cari dan pilih user untuk ditambahkan sebagai Buyer')
-          .setMinValues(1)
-          .setMaxValues(1);
-
-        const row = new ActionRowBuilder().addComponents(userSelectMenu);
-
-        await interaction.reply({
-          content: '👤 **Pilih user yang ingin ditambahkan sebagai Buyer:**\n💡 Gunakan search bar untuk mencari user dengan cepat!',
-          components: [row],
-          flags: 64
-        });
-
-        console.log('✅ User select menu (Buyer) berhasil ditampilkan');
-      } catch (error) {
-        console.error('❌ Error add_buyer:', error);
-        await interaction.reply({ 
-          content: '❌ Terjadi kesalahan!', 
-          flags: 64
-        });
-      }
-    }
-
-    // Button: Tambah Seller
-    if (interaction.isButton() && interaction.customId.startsWith('add_seller_')) {
-      try {
-        const ticketId = interaction.customId.split('_')[2];
-        const ticket = tickets.get(ticketId);
-
-        if (!ticket) {
-          return interaction.reply({ content: '❌ Ticket tidak ditemukan!', flags: 64 });
-        }
-
-        const userSelectMenu = new UserSelectMenuBuilder()
-          .setCustomId(`select_seller_${ticketId}`)
-          .setPlaceholder('🔍 Cari dan pilih user untuk ditambahkan sebagai Seller')
-          .setMinValues(1)
-          .setMaxValues(1);
-
-        const row = new ActionRowBuilder().addComponents(userSelectMenu);
-
-        await interaction.reply({
-          content: '💼 **Pilih user yang ingin ditambahkan sebagai Seller:**\n💡 Gunakan search bar untuk mencari user dengan cepat!',
-          components: [row],
-          flags: 64
-        });
-
-        console.log('✅ User select menu (Seller) berhasil ditampilkan');
-      } catch (error) {
-        console.error('❌ Error add_seller:', error);
-        await interaction.reply({ 
-          content: '❌ Terjadi kesalahan!', 
-          flags: 64
-        });
-      }
-    }
-
-    // Select Menu: Pilih Buyer (User Select)
-    if (interaction.isUserSelectMenu() && interaction.customId.startsWith('select_buyer_')) {
-      const ticketId = interaction.customId.split('_')[2];
-      const ticket = tickets.get(ticketId);
-      const userId = interaction.values[0];
-
-      if (!ticket) {
-        return interaction.update({ content: '❌ Ticket tidak ditemukan!', components: [] });
-      }
-
-      const selectedUser = await interaction.guild.members.fetch(userId);
-      
-      if (selectedUser.user.bot) {
-        return interaction.update({
-          content: '❌ Tidak bisa menambahkan bot sebagai Buyer!',
-          components: []
-        });
-      }
-
-      const ticketChannel = await interaction.guild.channels.fetch(ticket.channelId);
-      await ticketChannel.permissionOverwrites.create(userId, {
-        ViewChannel: true,
-        SendMessages: true,
-        ReadMessageHistory: true
-      });
-
-      if (!ticket.allowedUsers.includes(userId)) {
-        ticket.allowedUsers.push(userId);
-      }
-
-      await ticketChannel.send(`👤 **${selectedUser.user.tag}** telah ditambahkan sebagai **Buyer** oleh ${interaction.user.tag}`);
-
-      await interaction.update({
-        content: `✅ **${selectedUser.user.tag}** berhasil ditambahkan sebagai Buyer!`,
-        components: []
-      });
-    }
-
-    // Select Menu: Pilih Seller (User Select)
-    if (interaction.isUserSelectMenu() && interaction.customId.startsWith('select_seller_')) {
-      const ticketId = interaction.customId.split('_')[2];
-      const ticket = tickets.get(ticketId);
-      const userId = interaction.values[0];
-
-      if (!ticket) {
-        return interaction.update({ content: '❌ Ticket tidak ditemukan!', components: [] });
-      }
-
-      const selectedUser = await interaction.guild.members.fetch(userId);
-      
-      if (selectedUser.user.bot) {
-        return interaction.update({
-          content: '❌ Tidak bisa menambahkan bot sebagai Seller!',
-          components: []
-        });
-      }
-
-      const ticketChannel = await interaction.guild.channels.fetch(ticket.channelId);
-      await ticketChannel.permissionOverwrites.create(userId, {
-        ViewChannel: true,
-        SendMessages: true,
-        ReadMessageHistory: true
-      });
-
-      if (!ticket.allowedUsers.includes(userId)) {
-        ticket.allowedUsers.push(userId);
-      }
-
-      await ticketChannel.send(`💼 **${selectedUser.user.tag}** telah ditambahkan sebagai **Seller** oleh ${interaction.user.tag}`);
-
-      await interaction.update({
-        content: `✅ **${selectedUser.user.tag}** berhasil ditambahkan sebagai Seller!`,
-        components: []
-      });
-    }
-
-    // Button: Selesai (Hanya Admin)
-    if (interaction.isButton() && interaction.customId.startsWith('complete_')) {
-      if (!interaction.member.permissions.has(PermissionFlagsBits.Administrator)) {
-        return interaction.reply({ 
-          content: '❌ **Hanya Admin yang bisa menandai transaksi selesai!**', 
-          flags: 64
-        });
-      }
-
-      const ticketId = interaction.customId.split('_')[1];
-      const ticket = tickets.get(ticketId);
-
-      if (ticket) {
-        ticket.status = 'selesai';
-        await interaction.reply('✅ **Transaksi ditandai selesai oleh Admin!**');
-        
-        const channel = interaction.channel;
-        const messages = await channel.messages.fetch({ limit: 10 });
-        const ticketMessage = messages.find(m => m.embeds[0]?.footer?.text?.includes(ticketId));
-        
-        if (ticketMessage) {
-          const updatedEmbed = EmbedBuilder.from(ticketMessage.embeds[0])
-            .setColor('#00FF00')
-            .setTitle('✅ ORDER REKBER/MC - SELESAI');
-          await ticketMessage.edit({ embeds: [updatedEmbed], components: [] });
-        }
-        
-        await archiveAndDeleteTicket(ticket, 'selesai', interaction.guild);
-      }
-    }
-
-    // Button: Batalkan (Buyer, Seller, atau Admin)
-    if (interaction.isButton() && interaction.customId.startsWith('cancel_')) {
-      const ticketId = interaction.customId.split('_')[1];
-      const ticket = tickets.get(ticketId);
-
-      if (!ticket) {
-        return interaction.reply({ 
-          content: '❌ Ticket tidak ditemukan!', 
-          flags: 64
-        });
-      }
-
-      const isAdmin = interaction.member.permissions.has(PermissionFlagsBits.Administrator);
-      const isAllowedUser = ticket.allowedUsers && ticket.allowedUsers.includes(interaction.user.id);
-
-      console.log('🔍 Cek permission batalkan:', {
-        userId: interaction.user.id,
-        username: interaction.user.tag,
-        isAdmin,
-        isAllowedUser,
-        allowedUsers: ticket.allowedUsers
-      });
-
-      if (!isAdmin && !isAllowedUser) {
-        return interaction.reply({ 
-          content: '❌ **Hanya Admin, Buyer, atau Seller yang bisa membatalkan transaksi!**', 
-          flags: 64
-        });
-      }
-
-      ticket.status = 'dibatalkan';
-      await interaction.reply(`❌ **Transaksi dibatalkan oleh ${interaction.user.tag}!**`);
-      
-      const channel = interaction.channel;
-      const messages = await channel.messages.fetch({ limit: 10 });
-      const ticketMessage = messages.find(m => m.embeds[0]?.footer?.text?.includes(ticketId));
-      
-      if (ticketMessage) {
-        const updatedEmbed = EmbedBuilder.from(ticketMessage.embeds[0])
-          .setColor('#FF0000')
-          .setTitle('❌ ORDER REKBER/MC - DIBATALKAN');
-        await ticketMessage.edit({ embeds: [updatedEmbed], components: [] });
-      }
-      
-      await archiveAndDeleteTicket(ticket, 'dibatalkan', interaction.guild);
-    }
-
-    // Modal Submit: Ticket Form
-    if (interaction.isModalSubmit() && interaction.customId === 'ticket_form') {
-      try {
-        await interaction.deferReply({ flags: 64 }); // 64 = ephemeral flag
-
-        const buyer = interaction.fields.getTextInputValue('buyer_username');
-        const seller = interaction.fields.getTextInputValue('seller_username');
-        const item = interaction.fields.getTextInputValue('item');
-        const nominalRaw = interaction.fields.getTextInputValue('nominal').replace(/\D/g, '');
-        const nominal = parseInt(nominalRaw);
-        const paymentMethod = interaction.fields.getTextInputValue('payment_method');
-
-        console.log('📝 Form data:', { buyer, seller, item, nominal, paymentMethod });
-
-        if (isNaN(nominal) || nominal < 1000) {
-          return interaction.editReply({ content: '❌ Nominal tidak valid! Minimal Rp 1,000' });
-        }
-
-        const fee = calculateFee(nominal);
-        const total = nominal + fee;
-        const ticketId = `TICKET-${ticketCounter++}`;
-
-        console.log('💰 Perhitungan:', { nominal, fee, total });
-
-        let ticketChannel;
-        try {
-          ticketChannel = await interaction.guild.channels.create({
-            name: `ticket-${ticketId.toLowerCase()}`,
-            type: ChannelType.GuildText,
-            parent: interaction.channel.parentId,
-            permissionOverwrites: [
-              {
-                id: interaction.guild.id,
-                deny: [PermissionFlagsBits.ViewChannel],
-              },
-              {
-                id: interaction.user.id,
-                allow: [
-                  PermissionFlagsBits.ViewChannel,
-                  PermissionFlagsBits.SendMessages
-                ],
-              },
-              {
-                id: client.user.id,
-                allow: [
-                  PermissionFlagsBits.ViewChannel,
-                  PermissionFlagsBits.SendMessages,
-                  PermissionFlagsBits.EmbedLinks,
-                  PermissionFlagsBits.AttachFiles,
-                  PermissionFlagsBits.ReadMessageHistory
-                ],
-              },
-            ],
-          });
-          console.log('✅ Channel created:', ticketChannel.name);
-        } catch (channelError) {
-          console.error('❌ Error creating channel:', channelError);
-          return interaction.editReply({ 
-            content: '❌ Gagal membuat channel ticket. Pastikan bot punya permission "Manage Channels".' 
-          });
-        }
-
-        tickets.set(ticketId, {
-          id: ticketId,
-          buyer,
-          seller,
-          item,
-          nominal,
-          fee,
-          total,
-          paymentMethod,
-          status: 'pending',
-          channelId: ticketChannel.id,
-          creatorId: interaction.user.id,
-          allowedUsers: [interaction.user.id],
-          createdAt: new Date()
-        });
-
-        console.log('💾 Ticket saved:', ticketId);
-
-        const ticketEmbed = new EmbedBuilder()
-          .setColor('#FFA500')
-          .setTitle('🎫 ORDER REKBER/MC - PENDING')
-          .setDescription(
-            `**Detail Transaksi:**\n` +
-            `🛒 **Barang:** ${item}\n\n` +
-            `👤 **Pembeli:** ${buyer}\n` +
-            `💼 **Penjual:** ${seller}\n\n` +
-            `💰 **Nominal:** ${formatRupiah(nominal)}\n` +
-            `💵 **Fee Jasa MC:** ${formatRupiah(fee)}\n` +
-            `💳 **Total Pembayaran:** ${formatRupiah(total)}\n\n` +
-            `💳 **Metode Pembayaran:** ${paymentMethod}\n\n` +
-            `─────────────────────────────\n` +
-            `**🏦 INFORMASI PEMBAYARAN QRIS**\n` +
-            `NONSTOP88, GAMER\n` +
-            `**SCAN UNTUK MELAKUKAN TRANSFER**\n` +
-            `**NMID:** ID1025461592426\n` 
-          )
-          .setImage('https://cdn.discordapp.com/attachments/1453015494650232842/1458349144963022910/1767753033603.png?ex=695f50fa&is=695dff7a&hm=de2a9ed63a8c6c3f4ac92a814b5fdb3ead0985a93efff6f437f5247e099976e1')
-          .setFooter({ text: `${ticketId} | NS88 BOT 🤖` })
-          .setTimestamp();
-
-        const buttons = new ActionRowBuilder()
-          .addComponents(
-            new ButtonBuilder()
-              .setCustomId(`add_buyer_${ticketId}`)
-              .setLabel('Tambah Buyer')
-              .setStyle(ButtonStyle.Primary)
-              .setEmoji('👤'),
-            new ButtonBuilder()
-              .setCustomId(`add_seller_${ticketId}`)
-              .setLabel('Tambah Seller')
-              .setStyle(ButtonStyle.Primary)
-              .setEmoji('💼'),
-            new ButtonBuilder()
-              .setCustomId(`complete_${ticketId}`)
-              .setLabel('Selesai')
-              .setStyle(ButtonStyle.Success)
-              .setEmoji('✅'),
-            new ButtonBuilder()
-              .setCustomId(`cancel_${ticketId}`)
-              .setLabel('Batalkan')
-              .setStyle(ButtonStyle.Danger)
-              .setEmoji('❌')
-          );
-
-        await ticketChannel.send({ embeds: [ticketEmbed], components: [buttons] });
-        console.log('✅ Embed sent to channel');
-
-        const successReply = await interaction.editReply({ 
-          content: `✅ Ticket berhasil dibuat! Silakan cek channel ${ticketChannel}` 
-        });
-
-        setTimeout(async () => {
-          try {
-            await successReply.delete();
-          } catch (error) {
-            console.log('Pesan sudah dihapus atau tidak bisa dihapus');
-          }
-        }, 5000);
-
-      } catch (error) {
-        console.error('❌ Error dalam modal submit:', error);
-        console.error('Error stack:', error.stack);
-        
-        const errorMessage = error.message || 'Unknown error';
-        
-        if (interaction.deferred) {
-          await interaction.editReply({ 
-            content: `❌ Terjadi kesalahan: ${errorMessage}\n\nCek console untuk detail lengkap.` 
-          });
-        } else {
-          await interaction.reply({ 
-            content: `❌ Terjadi kesalahan: ${errorMessage}`, 
-            flags: 64
-          });
-        }
-      }
-    }
+    // Command handling
+    await CommandHandler.handle(message);
 
   } catch (error) {
-    console.error('❌ Error pada interaction:', error);
+    Logger.error('Error in messageCreate event', error);
+  }
+});
+
+// Interaction create event
+client.on('interactionCreate', async (interaction) => {
+  try {
+    if (interaction.isButton()) {
+      await InteractionHandler.handleButton(interaction);
+    } else if (interaction.isUserSelectMenu()) {
+      await InteractionHandler.handleUserSelect(interaction);
+    } else if (interaction.isModalSubmit()) {
+      await InteractionHandler.handleModalSubmit(interaction);
+    }
+  } catch (error) {
+    Logger.error('Error in interactionCreate event', error);
+    
+    const errorMessage = '❌ Terjadi kesalahan! Silakan coba lagi atau hubungi admin.';
+    
     if (interaction.replied || interaction.deferred) {
-      await interaction.followUp({ content: '❌ Terjadi kesalahan!', flags: 64 });
+      await interaction.followUp({ content: errorMessage, flags: 64 });
     } else {
-      await interaction.reply({ content: '❌ Terjadi kesalahan!', flags: 64 });
+      await interaction.reply({ content: errorMessage, flags: 64 });
     }
   }
 });
 
 // Error handling
 client.on('error', error => {
-  console.error('❌ Discord client error:', error);
+  Logger.error('Discord client error', error);
 });
 
 process.on('unhandledRejection', error => {
-  console.error('❌ Unhandled promise rejection:', error);
+  Logger.error('Unhandled promise rejection', error);
 });
 
-// Login bot - GANTI TOKEN DI BAWAH INI!
-client.login(process.env.TOKEN)
-  .catch(error => {
-    console.error('❌ Error login bot:', error);
+process.on('uncaughtException', error => {
+  Logger.error('Uncaught exception', error);
+  process.exit(1);
+});
+
+// ============================================================================
+// BOT LOGIN
+// ============================================================================
+
+const TOKEN = process.env.TOKEN;
+
+if (!TOKEN) {
+  Logger.error('Bot token not found! Please set TOKEN or DISCORD_TOKEN environment variable.');
+  process.exit(1);
+}
+
+client.login(TOKEN)
+  .then(() => {
+    Logger.success('Bot login successful!');
   })
+  .catch(error => {
+    Logger.error('Failed to login', error);
+    process.exit(1);
+  });
+
+// ============================================================================
+// GRACEFUL SHUTDOWN
+// ============================================================================
+
+process.on('SIGINT', async () => {
+  Logger.info('Shutting down bot...');
+  await client.destroy();
+  Logger.success('Bot shutdown complete');
+  process.exit(0);
+});
+
+process.on('SIGTERM', async () => {
+  Logger.info('Shutting down bot...');
+  await client.destroy();
+  Logger.success('Bot shutdown complete');
+  process.exit(0);
+});
