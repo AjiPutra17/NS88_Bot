@@ -809,7 +809,7 @@ client.on('interactionCreate', async (interaction) => {
             `💳 **Metode Pembayaran:** ${paymentMethod}\n\n` +
             `─────────────────────────────\n` +
             `**🏦 INFORMASI PEMBAYARAN QRIS**\n` +
-            `Ajie Yunisyaputra, Ahli Osteopati\n` +
+            `NONSTOP88, GAMER\n` +
             `**SCAN UNTUK MELAKUKAN TRANSFER**\n` +
             `**NMID:** ID1025461592426\n` 
           )
