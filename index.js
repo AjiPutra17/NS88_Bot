@@ -102,11 +102,11 @@ const CONFIG = {
   REACTION_ROLE: {
     WELCOME_MESSAGE_ID: null, // Will be set when welcome message is created
     ROLES: {
-      '🏆': 'Manusia gunung ⛰️',
-      '⏱️': 'Preman Best time ⏱️',
-      '🎮': 'Mancing Mania 🎣',
-      '💎': 'Si paling Gelud ⚔️',
-      '🗺️': 'Explore sana sini 🎮'
+      '⛰️': '1450479036538159345',
+      '⏱️': '1450477779123572757',
+      '🎣': '1450478180275060766',
+      '⚔️': '1450478746392989806',
+      '🎮': '1450478554507907327'
     }
   }
 };
@@ -480,11 +480,11 @@ class EmbedFactory {
       .setDescription(
         `**Halo, selamat datang di Server ${serverName}! 👋**\n\n` +
         'Agar kami dapat menyesuaikan pengalaman Anda, silakan pilih topik yang paling Anda minati dengan mengklik emoji yang sesuai:\n\n' +
-        '🏆 **Kompe Leaderboard** - Ikuti kompetisi dan pantau peringkat\n' +
-        '⏱️ **Kompe Best Time** - Lihat catatan waktu terbaik\n' +
-        '🎮 **Nonstop Mancing** - Bergabung dengan komunitas mancing\n' +
-        '💎 **PvP Mining** - Aktivitas mining dan PvP\n' +
-        '🗺️ **Game Explorer** - Jelajahi dunia game bersama\n\n' +
+        '⛰️ **Manusia gunung ⛰️** - Ikuti kompetisi dan pantau peringkat\n' +
+        '⏱️ **Preman Best time ⏱️** - Lihat catatan waktu terbaik\n' +
+        '🎣 **Mancing Mania 🎣** - Bergabung dengan komunitas mancing\n' +
+        '⚔️ **Si paling Gelud ⚔️** - Aktivitas mining dan PvP\n' +
+        '🎮 **Explore sana sini 🎮** - Jelajahi dunia game bersama\n\n' +
         '✨ **Cara menggunakan:**\n' +
         '• Klik emoji untuk mendapatkan role\n' +
         '• Kamu bisa memilih lebih dari satu topik!\n' +
@@ -532,11 +532,11 @@ class EmbedFactory {
           `**Question ${questionNumber} of 2** • Required\n\n` +
           `**Halo, selamat datang di Server ${member.guild.name}! 👋**\n\n` +
           `Agar kami dapat menyesuaikan pengalaman Anda, silakan pilih topik yang paling Anda minati dengan mengklik emoji yang sesuai:\n\n` +
-          `🏆 **Kompe Leaderboard** - Ikuti kompetisi dan pantau peringkat\n` +
-          `⏱️ **Kompe Best Time** - Lihat catatan waktu terbaik\n` +
-          `🎮 **Nonstop Mancing** - Bergabung dengan komunitas mancing\n` +
-          `💎 **PvP Mining** - Aktivitas mining dan PvP\n` +
-          `🗺️ **Game Explorer** - Jelajahi dunia game bersama\n\n` +
+          `⛰️ **Manusia gunung ⛰️**  - Ikuti kompetisi dan pantau peringkat\n` +
+          `⏱️ **Preman Best time ⏱️** - Lihat catatan waktu terbaik\n` +
+          `🎣 **Mancing Mania 🎣** - Bergabung dengan komunitas mancing\n` +
+          `⚔️ **Si paling Gelud ⚔️** - Aktivitas mining dan PvP\n` +
+          `🎮 **Explore sana sini 🎮** - Jelajahi dunia game bersama\n\n` +
           `✨ Kamu bisa memilih lebih dari satu topik!`
         )
         .setFooter({ text: `${CONFIG.BOT.NAME} 🤖` })
