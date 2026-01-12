@@ -9,7 +9,6 @@
 const { 
   Client, 
   GatewayIntentBits, 
-  Partials,
   EmbedBuilder, 
   ActionRowBuilder, 
   ButtonBuilder, 
@@ -32,7 +31,7 @@ const CONFIG = {
   BOT: {
     NAME: 'NS88 BOT',
     VERSION: '2.1.0',
-    ACTIVITY: 'Rekber/MC & Reaction Role',
+    ACTIVITY: 'Rekber/MC System',
     ACTIVITY_TYPE: ActivityType.Watching,
     PREFIX: '!'
   },
@@ -42,9 +41,7 @@ const CONFIG = {
     SETUP: process.env.SETUP_CHANNEL_ID || null,
     ARCHIVE: process.env.ARCHIVE_CHANNEL_ID || null,
     TICKET: process.env.TICKET_CHANNEL || null,
-    WARNING: (process.env.WARNING_CHANNEL_IDS || '').split(',').filter(Boolean),
-    REACTION_ROLE: process.env.REACTION_ROLE_CHANNEL_ID || null,
-    WELCOME: process.env.WELCOME_CHANNEL_ID || null
+    WARNING: (process.env.WARNING_CHANNEL_IDS || '').split(',').filter(Boolean)
   },
 
   // Admin Settings
@@ -96,19 +93,7 @@ const CONFIG = {
     { min: 100000, max: 150000, fee: 7000 },
     { min: 150000, max: 300000, fee: 10000 },
     { min: 300001, max: Infinity, percentage: 0.05 }
-  ],
-
-  // Reaction Role Settings
-  REACTION_ROLE: {
-    WELCOME_MESSAGE_ID: null, // Will be set when welcome message is created
-    ROLES: {
-      '⛰️': '1450479036538159345',
-      '⏱️': '1450477779123572757',
-      '🎣': '1450478180275060766',
-      '⚔️': '1450478746392989806',
-      '🎮': '1450478554507907327'
-    }
-  }
+  ]
 };
 
 // ============================================================================
@@ -121,9 +106,7 @@ const client = new Client({
     GatewayIntentBits.GuildMessages,
     GatewayIntentBits.MessageContent,
     GatewayIntentBits.GuildMembers,
-    GatewayIntentBits.GuildMessageReactions,
-  ],
-  partials: [Partials.Message, Partials.Channel, Partials.Reaction, Partials.GuildMember]
+  ]
 });
 
 // ============================================================================
@@ -208,91 +191,8 @@ class SlowmodeManager {
   }
 }
 
-class ReactionRoleManager {
-  constructor() {
-    this.reactionRoles = new Map(); // messageId -> Map(emoji -> roleId)
-  }
-
-  add(messageId, emoji, roleId) {
-    if (!this.reactionRoles.has(messageId)) {
-      this.reactionRoles.set(messageId, new Map());
-    }
-    this.reactionRoles.get(messageId).set(emoji, roleId);
-  }
-
-  remove(messageId, emoji) {
-    if (this.reactionRoles.has(messageId)) {
-      this.reactionRoles.get(messageId).delete(emoji);
-      if (this.reactionRoles.get(messageId).size === 0) {
-        this.reactionRoles.delete(messageId);
-      }
-    }
-  }
-
-  get(messageId, emoji) {
-    if (!this.reactionRoles.has(messageId)) return null;
-    return this.reactionRoles.get(messageId).get(emoji);
-  }
-
-  getAll(messageId) {
-    return this.reactionRoles.get(messageId) || new Map();
-  }
-
-  deleteMessage(messageId) {
-    return this.reactionRoles.delete(messageId);
-  }
-
-  getAllMessages() {
-    return Array.from(this.reactionRoles.keys());
-  }
-}
-
-class OnboardingManager {
-  constructor() {
-    this.sessions = new Map(); // userId -> { step, selectedRoles }
-  }
-
-  start(userId) {
-    this.sessions.set(userId, {
-      step: 1,
-      selectedRoles: []
-    });
-  }
-
-  getSession(userId) {
-    return this.sessions.get(userId);
-  }
-
-  nextStep(userId) {
-    const session = this.sessions.get(userId);
-    if (session) {
-      session.step++;
-      this.sessions.set(userId, session);
-    }
-  }
-
-  addRole(userId, roleId) {
-    const session = this.sessions.get(userId);
-    if (session && !session.selectedRoles.includes(roleId)) {
-      session.selectedRoles.push(roleId);
-      this.sessions.set(userId, session);
-    }
-  }
-
-  removeRole(userId, roleId) {
-    const session = this.sessions.get(userId);
-    if (session) {
-      session.selectedRoles = session.selectedRoles.filter(id => id !== roleId);
-      this.sessions.set(userId, session);
-    }
-  }
-
-  complete(userId) {
-    this.sessions.delete(userId);
-  }
-}
-
-const onboardingManager = new OnboardingManager();
+const ticketManager = new TicketManager();
+const slowmodeManager = new SlowmodeManager();
 
 // ============================================================================
 // UTILITY FUNCTIONS
@@ -473,119 +373,6 @@ class EmbedFactory {
       .setTimestamp();
   }
 
-  static createReactionRoleEmbed(serverName = 'NS88') {
-    return new EmbedBuilder()
-      .setColor(CONFIG.COLORS.PRIMARY)
-      .setTitle('🎭 Pilih Topik Minat Anda!')
-      .setDescription(
-        `**Halo, selamat datang di Server ${serverName}! 👋**\n\n` +
-        'Agar kami dapat menyesuaikan pengalaman Anda, silakan pilih topik yang paling Anda minati dengan mengklik emoji yang sesuai:\n\n' +
-        '⛰️ **Manusia gunung ⛰️** - Ikuti kompetisi dan pantau peringkat\n' +
-        '⏱️ **Preman Best time ⏱️** - Lihat catatan waktu terbaik\n' +
-        '🎣 **Mancing Mania 🎣** - Bergabung dengan komunitas mancing\n' +
-        '⚔️ **Si paling Gelud ⚔️** - Aktivitas mining dan PvP\n' +
-        '🎮 **Explore sana sini 🎮** - Jelajahi dunia game bersama\n\n' +
-        '✨ **Cara menggunakan:**\n' +
-        '• Klik emoji untuk mendapatkan role\n' +
-        '• Kamu bisa memilih lebih dari satu topik!\n' +
-        '• Klik lagi untuk menghapus role\n\n' +
-        '👇 **Pilih topik favoritmu sekarang!**'
-      )
-      .setFooter({ text: `${CONFIG.BOT.NAME} 🤖 - Selamat Bergabung!` })
-      .setTimestamp();
-  }
-
-  static createWelcomeEmbed(member) {
-    return new EmbedBuilder()
-      .setColor(CONFIG.COLORS.PRIMARY)
-      .setTitle('👋 Selamat Datang di NS88!')
-      .setDescription(
-        `Halo ${member}! Selamat datang di **${member.guild.name}**! 🎊\n\n` +
-        `Untuk memulai, silakan lengkapi onboarding dengan klik tombol dibawah ini.\n\n` +
-        `📝 Kamu akan diminta untuk:\n` +
-        `• Verifikasi bahwa kamu adalah manusia\n` +
-        `• Memilih topik yang kamu minati\n\n` +
-        `Proses ini hanya memakan waktu beberapa detik! ⚡`
-      )
-      .setThumbnail(member.user.displayAvatarURL({ dynamic: true }))
-      .setFooter({ text: `Member ke-${member.guild.memberCount} • ${CONFIG.BOT.NAME}` })
-      .setTimestamp();
-  }
-
-  static createOnboardingQuestionEmbed(member, questionNumber = 1) {
-    if (questionNumber === 1) {
-      return new EmbedBuilder()
-        .setColor(CONFIG.COLORS.INFO)
-        .setTitle('📋 Onboarding')
-        .setDescription(
-          `**Question ${questionNumber} of 2** • Required\n\n` +
-          `**Are u human?** 🤔\n\n` +
-          `Klik tombol dibawah untuk melanjutkan.`
-        )
-        .setFooter({ text: `${CONFIG.BOT.NAME} 🤖` })
-        .setTimestamp();
-    } else if (questionNumber === 2) {
-      return new EmbedBuilder()
-        .setColor(CONFIG.COLORS.INFO)
-        .setTitle('📋 Onboarding')
-        .setDescription(
-          `**Question ${questionNumber} of 2** • Required\n\n` +
-          `**Halo, selamat datang di Server ${member.guild.name}! 👋**\n\n` +
-          `Agar kami dapat menyesuaikan pengalaman Anda, silakan pilih topik yang paling Anda minati dengan mengklik emoji yang sesuai:\n\n` +
-          `⛰️ **Manusia gunung ⛰️**  - Ikuti kompetisi dan pantau peringkat\n` +
-          `⏱️ **Preman Best time ⏱️** - Lihat catatan waktu terbaik\n` +
-          `🎣 **Mancing Mania 🎣** - Bergabung dengan komunitas mancing\n` +
-          `⚔️ **Si paling Gelud ⚔️** - Aktivitas mining dan PvP\n` +
-          `🎮 **Explore sana sini 🎮** - Jelajahi dunia game bersama\n\n` +
-          `✨ Kamu bisa memilih lebih dari satu topik!`
-        )
-        .setFooter({ text: `${CONFIG.BOT.NAME} 🤖` })
-        .setTimestamp();
-    }
-  }
-
-  static createOnboardingCompleteEmbed(member, selectedRoles) {
-    let rolesText = 'Tidak ada role yang dipilih';
-    
-    if (selectedRoles && selectedRoles.length > 0) {
-      rolesText = selectedRoles.map(role => `• ${role.name}`).join('\n');
-    }
-    
-    return new EmbedBuilder()
-      .setColor(CONFIG.COLORS.SUCCESS)
-      .setTitle('✅ Onboarding Selesai!')
-      .setDescription(
-        `Terima kasih ${member}! 🎉\n\n` +
-        `**Role yang kamu dapatkan:**\n${rolesText}\n\n` +
-        `Selamat menikmati server kami! Jangan lupa explore channel-channel lainnya! 🚀`
-      )
-      .setThumbnail(member.user.displayAvatarURL({ dynamic: true }))
-      .setFooter({ text: `${CONFIG.BOT.NAME} 🤖` })
-      .setTimestamp();
-  }
-
-  static createReactionRoleListEmbed(roles) {
-    const embed = new EmbedBuilder()
-      .setColor(CONFIG.COLORS.INFO)
-      .setTitle('📋 Daftar Reaction Role Aktif')
-      .setFooter({ text: `${CONFIG.BOT.NAME} 🤖` })
-      .setTimestamp();
-
-    if (roles.length === 0) {
-      embed.setDescription('❌ Tidak ada reaction role yang aktif.');
-      return embed;
-    }
-
-    let description = '';
-    for (const role of roles) {
-      description += `**Message ID:** \`${role.messageId}\`\n`;
-      description += `${role.emoji} ➜ <@&${role.roleId}>\n\n`;
-    }
-
-    embed.setDescription(description);
-    return embed;
-  }
-
   static createHelpEmbed() {
     return new EmbedBuilder()
       .setColor(CONFIG.COLORS.INFO)
@@ -596,14 +383,6 @@ class EmbedFactory {
           name: '🎫 TICKET SYSTEM', 
           value: `\`${CONFIG.BOT.PREFIX}setup-ticket\` - Setup panel ticket (Admin)\n` +
                  `Menampilkan panel untuk membuat ticket rekber/MC`,
-          inline: false
-        },
-        { 
-          name: '🎭 REACTION ROLE SYSTEM', 
-          value: `\`${CONFIG.BOT.PREFIX}setup-reaction-role\` - Setup panel reaction role (Admin)\n` +
-                 `\`${CONFIG.BOT.PREFIX}add-reaction-role <msgId> <emoji> @role\` - Tambah mapping (Admin)\n` +
-                 `\`${CONFIG.BOT.PREFIX}remove-reaction-role <msgId> <emoji>\` - Hapus mapping (Admin)\n` +
-                 `\`${CONFIG.BOT.PREFIX}list-reaction-roles\` - Lihat daftar aktif (Admin)`,
           inline: false
         },
         { 
@@ -928,18 +707,6 @@ class CommandHandler {
       case 'setup-ticket':
         await this.setupTicket(message);
         break;
-      case 'setup-reaction-role':
-        await this.setupReactionRole(message);
-        break;
-      case 'add-reaction-role':
-        await this.addReactionRole(message, args);
-        break;
-      case 'remove-reaction-role':
-        await this.removeReactionRole(message, args);
-        break;
-      case 'list-reaction-roles':
-        await this.listReactionRoles(message);
-        break;
       case 'help':
         await this.showHelp(message);
         break;
@@ -966,198 +733,6 @@ class CommandHandler {
     await message.channel.send({ embeds: [embed], components: [button] });
     message.delete().catch(() => {});
     Logger.success(`Setup ticket executed by ${message.author.tag}`);
-  }
-
-  static async setupReactionRole(message) {
-    if (!message.member.permissions.has(PermissionFlagsBits.Administrator)) {
-      return message.reply('❌ **Error:** Hanya admin yang bisa menggunakan command ini!');
-    }
-
-    const embed = EmbedFactory.createReactionRoleEmbed(message.guild.name);
-    const sentMessage = await message.channel.send({ embeds: [embed] });
-    
-    // Save message ID for future reference
-    CONFIG.REACTION_ROLE.WELCOME_MESSAGE_ID = sentMessage.id;
-    
-    // Auto-add the default reactions for topics
-    const defaultEmojis = Object.keys(CONFIG.REACTION_ROLE.ROLES);
-    
-    try {
-      for (const emoji of defaultEmojis) {
-        await sentMessage.react(emoji);
-        await new Promise(resolve => setTimeout(resolve, 300));
-      }
-    } catch (error) {
-      Logger.warning('Could not add all default reactions');
-    }
-    
-    // Auto-setup all reaction roles if roles exist
-    let autoSetupCount = 0;
-    for (const [emoji, roleName] of Object.entries(CONFIG.REACTION_ROLE.ROLES)) {
-      const role = message.guild.roles.cache.find(r => r.name === roleName);
-      if (role) {
-        reactionRoleManager.add(sentMessage.id, emoji, role.id);
-        autoSetupCount++;
-      }
-    }
-    
-    let replyMessage = `✅ **Reaction role panel berhasil dibuat!**\n\n`;
-    
-    if (autoSetupCount > 0) {
-      replyMessage += `🎉 **${autoSetupCount} role berhasil di-mapping otomatis!**\n\n`;
-      replyMessage += `**Role yang sudah aktif:**\n`;
-      for (const [emoji, roleName] of Object.entries(CONFIG.REACTION_ROLE.ROLES)) {
-        const role = message.guild.roles.cache.find(r => r.name === roleName);
-        if (role) {
-          replyMessage += `${emoji} - ${role}\n`;
-        }
-      }
-    } else {
-      replyMessage += `⚠️ **Tidak ada role yang ter-mapping otomatis**\n\n`;
-      replyMessage += `**Pastikan role berikut sudah dibuat:**\n`;
-      for (const [emoji, roleName] of Object.entries(CONFIG.REACTION_ROLE.ROLES)) {
-        replyMessage += `${emoji} - ${roleName}\n`;
-      }
-      replyMessage += `\n**Atau mapping manual dengan:**\n`;
-      replyMessage += `\`${CONFIG.BOT.PREFIX}add-reaction-role ${sentMessage.id} 🏆 @RoleName\``;
-    }
-    
-    replyMessage += `\n\n📝 **Message ID:** \`${sentMessage.id}\``;
-    replyMessage += `\n\n💡 **Tip:** Member baru akan otomatis melihat pesan ini saat join!`;
-    
-    await message.reply(replyMessage);
-
-    message.delete().catch(() => {});
-    Logger.success(`Reaction role panel created by ${message.author.tag} with ${autoSetupCount} auto-mapped roles`);
-  }
-
-  static async addReactionRole(message, args) {
-    if (!message.member.permissions.has(PermissionFlagsBits.Administrator)) {
-      return message.reply('❌ **Error:** Hanya admin yang bisa menggunakan command ini!');
-    }
-
-    if (args.length < 3) {
-      return message.reply(
-        `❌ **Error:** Format command salah!\n\n` +
-        `**Format yang benar:**\n` +
-        `\`${CONFIG.BOT.PREFIX}add-reaction-role <messageId> <emoji> @role\`\n\n` +
-        `**Contoh:**\n` +
-        `\`${CONFIG.BOT.PREFIX}add-reaction-role 123456789 👍 @Member\``
-      );
-    }
-
-    const messageId = args[0];
-    const emoji = args[1];
-    const roleId = message.mentions.roles.first()?.id;
-
-    if (!roleId) {
-      return message.reply('❌ **Error:** Role tidak ditemukan! Pastikan kamu mention role dengan @');
-    }
-
-    try {
-      const targetMessage = await message.channel.messages.fetch(messageId);
-      
-      if (!targetMessage) {
-        return message.reply('❌ **Error:** Message dengan ID tersebut tidak ditemukan!');
-      }
-
-      await targetMessage.react(emoji);
-      reactionRoleManager.add(messageId, emoji, roleId);
-
-      const role = message.guild.roles.cache.get(roleId);
-      await message.reply(
-        `✅ **Reaction role berhasil ditambahkan!**\n\n` +
-        `${emoji} ➜ ${role}\n` +
-        `📝 Message ID: \`${messageId}\`\n\n` +
-        `User yang react ${emoji} akan mendapatkan role ${role}`
-      );
-
-      Logger.success(`Reaction role added: ${emoji} -> ${role.name} (Message: ${messageId})`);
-
-    } catch (error) {
-      Logger.error('Error adding reaction role', error);
-      
-      if (error.message.includes('Unknown Message')) {
-        return message.reply('❌ **Error:** Message dengan ID tersebut tidak ditemukan di channel ini!');
-      } else if (error.message.includes('Unknown Emoji')) {
-        return message.reply('❌ **Error:** Emoji tidak valid! Pastikan bot bisa mengakses emoji tersebut.');
-      } else {
-        return message.reply('❌ **Error:** Gagal menambahkan reaction role. Cek log untuk detail.');
-      }
-    }
-  }
-
-  static async removeReactionRole(message, args) {
-    if (!message.member.permissions.has(PermissionFlagsBits.Administrator)) {
-      return message.reply('❌ **Error:** Hanya admin yang bisa menggunakan command ini!');
-    }
-
-    if (args.length < 2) {
-      return message.reply(
-        `❌ **Error:** Format command salah!\n\n` +
-        `**Format yang benar:**\n` +
-        `\`${CONFIG.BOT.PREFIX}remove-reaction-role <messageId> <emoji>\`\n\n` +
-        `**Contoh:**\n` +
-        `\`${CONFIG.BOT.PREFIX}remove-reaction-role 123456789 👍\``
-      );
-    }
-
-    const messageId = args[0];
-    const emoji = args[1];
-
-    const roleId = reactionRoleManager.get(messageId, emoji);
-
-    if (!roleId) {
-      return message.reply(
-        `❌ **Error:** Reaction role tidak ditemukan!\n\n` +
-        `Pastikan Message ID dan emoji sudah benar.\n` +
-        `Gunakan \`${CONFIG.BOT.PREFIX}list-reaction-roles\` untuk melihat daftar yang aktif.`
-      );
-    }
-
-    try {
-      const targetMessage = await message.channel.messages.fetch(messageId);
-      if (targetMessage) {
-        const reactions = targetMessage.reactions.cache.get(emoji);
-        if (reactions) {
-          await reactions.users.remove(client.user.id);
-        }
-      }
-    } catch (error) {
-      Logger.debug('Could not remove reaction from message');
-    }
-
-    reactionRoleManager.remove(messageId, emoji);
-
-    const role = message.guild.roles.cache.get(roleId);
-    await message.reply(
-      `✅ **Reaction role berhasil dihapus!**\n\n` +
-      `${emoji} ➜ ${role || `Role ID: ${roleId}`}\n` +
-      `📝 Message ID: \`${messageId}\``
-    );
-
-    Logger.success(`Reaction role removed: ${emoji} from Message ${messageId}`);
-  }
-
-  static async listReactionRoles(message) {
-    if (!message.member.permissions.has(PermissionFlagsBits.Administrator)) {
-      return message.reply('❌ **Error:** Hanya admin yang bisa menggunakan command ini!');
-    }
-
-    const allRoles = [];
-    const messageIds = reactionRoleManager.getAllMessages();
-
-    for (const messageId of messageIds) {
-      const roles = reactionRoleManager.getAll(messageId);
-      for (const [emoji, roleId] of roles) {
-        allRoles.push({ messageId, emoji, roleId });
-      }
-    }
-
-    const embed = EmbedFactory.createReactionRoleListEmbed(allRoles);
-    await message.reply({ embeds: [embed] });
-
-    Logger.info(`Reaction role list viewed by ${message.author.tag}`);
   }
 
   static async showHelp(message) {
@@ -1679,88 +1254,24 @@ client.on('guildMemberAdd', async (member) => {
     // Check if welcome channel is configured
     if (!CONFIG.CHANNELS.WELCOME) {
       Logger.warning('WELCOME_CHANNEL_ID not configured, skipping welcome message');
-      return;
-    }
-    
-    const welcomeChannel = await member.guild.channels.fetch(CONFIG.CHANNELS.WELCOME).catch(() => null);
-    
-    if (!welcomeChannel) {
-      Logger.warning('Welcome channel not found');
-      return;
-    }
-    
-    // Send welcome embed mentioning the member
-    const welcomeEmbed = EmbedFactory.createWelcomeEmbed(member);
-    await welcomeChannel.send({ 
-      content: `${member}`, 
-      embeds: [welcomeEmbed] 
-    });
-    
-    // Check if reaction role message exists
-    if (CONFIG.REACTION_ROLE.WELCOME_MESSAGE_ID) {
-      try {
-        const reactionRoleMessage = await welcomeChannel.messages.fetch(CONFIG.REACTION_ROLE.WELCOME_MESSAGE_ID);
-        
-        if (reactionRoleMessage) {
-          // Remind them about the reaction role message
-          await welcomeChannel.send(
-            `${member} 👆 **Jangan lupa pilih topik minatmu dengan react emoji di pesan diatas!**`
-          );
-        }
-      } catch (error) {
-        Logger.debug('Reaction role message not found in welcome channel');
-        
-        // If message not found, send a new reaction role panel
-        const reactionRoleEmbed = EmbedFactory.createReactionRoleEmbed(member.guild.name);
-        const sentMessage = await welcomeChannel.send({ embeds: [reactionRoleEmbed] });
-        
-        // Save the message ID
-        CONFIG.REACTION_ROLE.WELCOME_MESSAGE_ID = sentMessage.id;
-        
-        // Add reactions
-        const defaultEmojis = Object.keys(CONFIG.REACTION_ROLE.ROLES);
-        for (const emoji of defaultEmojis) {
-          await sentMessage.react(emoji).catch(() => {});
-          await new Promise(resolve => setTimeout(resolve, 300));
-        }
-        
-        // Auto-map roles if they exist
-        for (const [emoji, roleName] of Object.entries(CONFIG.REACTION_ROLE.ROLES)) {
-          const role = member.guild.roles.cache.find(r => r.name === roleName);
-          if (role) {
-            reactionRoleManager.add(sentMessage.id, emoji, role.id);
-          }
-        }
-        
-        Logger.success('Auto-created reaction role panel in welcome channel');
-      }
+      // Still send DM even if no welcome channel
     } else {
-      // No reaction role message set, create one
-      const reactionRoleEmbed = EmbedFactory.createReactionRoleEmbed(member.guild.name);
-      const sentMessage = await welcomeChannel.send({ embeds: [reactionRoleEmbed] });
+      const welcomeChannel = await member.guild.channels.fetch(CONFIG.CHANNELS.WELCOME).catch(() => null);
       
-      CONFIG.REACTION_ROLE.WELCOME_MESSAGE_ID = sentMessage.id;
-      
-      const defaultEmojis = Object.keys(CONFIG.REACTION_ROLE.ROLES);
-      for (const emoji of defaultEmojis) {
-        await sentMessage.react(emoji).catch(() => {});
-        await new Promise(resolve => setTimeout(resolve, 300));
+      if (welcomeChannel) {
+        // Simple welcome message in channel
+        await welcomeChannel.send(
+          `🎉 ${member} **bergabung dengan server!** Selamat datang di **${member.guild.name}**! 🎊`
+        );
       }
-      
-      for (const [emoji, roleName] of Object.entries(CONFIG.REACTION_ROLE.ROLES)) {
-        const role = member.guild.roles.cache.find(r => r.name === roleName);
-        if (role) {
-          reactionRoleManager.add(sentMessage.id, emoji, role.id);
-        }
-      }
-      
-      Logger.success('Auto-created reaction role panel for first member');
     }
     
-    // Send DM to new member
+    // Send DM to new member with onboarding instructions
     try {
+      const serverName = member.guild.name;
+      
       await member.send(
-        `🎉 **Selamat datang di ${member.guild.name}!**\n\n` +
+        `🎉 **Selamat datang di ${serverName}!**\n\n` +
         `Hai ${member.user.username}! Terima kasih sudah bergabung dengan kami.\n\n` +
         `📝 **Jangan lupa:**\n` +
         `• Pilih topik minatmu di channel welcome dengan react emoji\n` +
@@ -1768,11 +1279,13 @@ client.on('guildMemberAdd', async (member) => {
         `• Kenalan dengan member lainnya!\n\n` +
         `Selamat menikmati server kami! 🎊`
       );
+      
+      Logger.success(`Welcome DM sent to ${member.user.tag}`);
     } catch (error) {
-      Logger.debug(`Could not send DM to ${member.user.tag}`);
+      Logger.debug(`Could not send DM to ${member.user.tag} - DMs might be closed`);
     }
     
-    Logger.success(`Welcome message sent for ${member.user.tag}`);
+    Logger.success(`Welcome process completed for ${member.user.tag}`);
     
   } catch (error) {
     Logger.error('Error in guildMemberAdd event', error);
