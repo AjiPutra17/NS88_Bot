@@ -1274,7 +1274,6 @@ client.on('guildMemberAdd', async (member) => {
         `🎉 **Selamat datang di ${serverName}!**\n\n` +
         `Hai ${member.user.username}! Terima kasih sudah bergabung dengan kami.\n\n` +
         `📝 **Jangan lupa:**\n` +
-        `• Pilih topik minatmu di channel welcome dengan react emoji\n` +
         `• Baca rules dan peraturan server\n` +
         `• Kenalan dengan member lainnya!\n\n` +
         `Selamat menikmati server kami! 🎊`
