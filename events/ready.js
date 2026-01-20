@@ -4,7 +4,7 @@
 
 const { ActionRowBuilder, ButtonBuilder, ButtonStyle } = require('discord.js');
 const config = require('../config/config.js');
-const EmbedFactory = require('../embed/EmbedFactory');
+const EmbedFactory = require('../embeds/EmbedFactory');
 const Logger = require('../utils/logger');
 
 async function ready(client) {
