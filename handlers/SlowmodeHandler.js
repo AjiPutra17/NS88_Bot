@@ -25,8 +25,8 @@ class SlowmodeHandler {
     // Check if user has donatur role
     const isDonatur = Utils.hasRole(message.member, config.DONATUR.ROLE_NAME);
     const slowmodeDuration = isDonatur 
-      ? config.DONATUR.SLOWMODE_SECONDS 
-      : config.NON_DONATUR.SLOWMODE_SECONDS;
+      ? config.DONATUR.SLOWMODE_MINUTES 
+      : config.NON_DONATUR.SLOWMODE_MINUTES;
     
     // Get remaining time
     const remainingTime = slowmodeManager.getRemainingTime(userId, channelId, slowmodeDuration);
@@ -43,7 +43,7 @@ class SlowmodeHandler {
       const timeString = Utils.formatTime(remainingTime);
       const slowmodeWarning = await message.channel.send(
         `${message.author} **⏰ Slowmode aktif:** tunggu **${timeString}** sebelum kirim pesan lagi!\n` +
-        `💡 Boost server untuk cooldown lebih cepat **(${config.DONATUR.SLOWMODE_SECONDS} detik)**!`
+        `💡 Boost server untuk cooldown lebih cepat **(${config.DONATUR.SLOWMODE_MINUTES} Menit)**!`
       );
       
       Utils.deleteMessageAfterDelay(slowmodeWarning, 5000);

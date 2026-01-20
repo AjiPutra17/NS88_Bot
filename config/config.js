@@ -28,16 +28,22 @@ const CONFIG = {
     ROLE_NAME: process.env.ADMIN_ROLE_NAME || 'Admin'
   },
 
-  // Donatur/Booster Settings
-  DONATUR: {
-    ROLE_NAME: process.env.DONATUR_ROLE_NAME || 'Donatur NS88',
-    SLOWMODE_SECONDS: parseInt(process.env.SLOWMODE_DONATUR) || 600,
-  },
+ // Donatur/Booster Settings
+DONATUR: {
+  ROLE_NAME: process.env.DONATUR_ROLE_NAME || 'Donatur NS88',
+  SLOWMODE_MINUTES: parseInt(process.env.SLOWMODE_DONATUR_MINUTES) || 10,
+  SLOWMODE_SECONDS() {
+    return this.SLOWMODE_MINUTES * 60;
+  }
+},
 
-  // Non-Donatur Settings
-  NON_DONATUR: {
-    SLOWMODE_SECONDS: parseInt(process.env.SLOWMODE_NON_DONATUR) || 1800,
-  },
+// Non-Donatur Settings
+NON_DONATUR: {
+  SLOWMODE_MINUTES: parseInt(process.env.SLOWMODE_NON_DONATUR_MINUTES) || 30,
+  SLOWMODE_SECONDS() {
+    return this.SLOWMODE_MINUTES * 60;
+  }
+},
 
   // Payment Information
   PAYMENT: {
