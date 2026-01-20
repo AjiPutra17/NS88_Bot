@@ -2,7 +2,7 @@
 // SLOWMODE MANAGER
 // ============================================================================
 
-class SlowmodeManage {
+class SlowmodeManager {
   constructor() {
     this.userLastMessageTime = new Map();
     this.lastWarningMessages = new Map();
@@ -39,4 +39,4 @@ class SlowmodeManage {
   }
 }
 
-module.exports = SlowmodeManage;
+module.exports = SlowmodeManager;

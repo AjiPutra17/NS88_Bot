@@ -3,7 +3,7 @@
 // ============================================================================
 
 const TicketManager = require('./TicketManager');
-const SlowmodeManager = require('./SlowmodeManage');
+const SlowmodeManager = require('./SlowmodeManager');
 
 // Initialize managers
 const ticketManager = new TicketManager();
