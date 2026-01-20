@@ -24,16 +24,18 @@ class SlowmodeHandler {
     
     // Check if user has donatur role
     const isDonatur = Utils.hasRole(message.member, config.DONATUR.ROLE_NAME);
-    const slowmodeDuration = isDonatur 
-      ? config.DONATUR.SLOWMODE_MINUTES 
-      : config.NON_DONATUR.SLOWMODE_MINUTES;
+    const slowmodeDuration = isDonatur
+      ? config.DONATUR.SLOWMODE_SECONDS()
+      : config.NON_DONATUR.SLOWMODE_SECONDS();
 
-      console.log({
-  configRole: config.DONATUR.ROLE_NAME,
-  userRoles: message.member.roles.cache.map(r => r.name),
-  isDonatur
-});
 
+    Logger.debug(
+      `Slowmode ${isDonatur ? 'Donatur' : 'Non-Donatur'}: ${
+        isDonatur 
+          ? config.DONATUR.SLOWMODE_MINUTES 
+          : config.NON_DONATUR.SLOWMODE_MINUTES
+      } menit`
+    );
     
     // Get remaining time
     const remainingTime = slowmodeManager.getRemainingTime(userId, channelId, slowmodeDuration);
