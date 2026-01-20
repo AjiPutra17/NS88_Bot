@@ -3,7 +3,7 @@
 // ============================================================================
 
 const { ActionRowBuilder, ButtonBuilder, ButtonStyle } = require('discord.js');
-const config = require('../config/config');
+const config = require('../config/config.js');
 const EmbedFactory = require('../embeds/EmbedFactory');
 const Logger = require('../utils/logger');
 
