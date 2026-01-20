@@ -27,6 +27,13 @@ class SlowmodeHandler {
     const slowmodeDuration = isDonatur 
       ? config.DONATUR.SLOWMODE_MINUTES 
       : config.NON_DONATUR.SLOWMODE_MINUTES;
+
+      console.log({
+  configRole: config.DONATUR.ROLE_NAME,
+  userRoles: message.member.roles.cache.map(r => r.name),
+  isDonatur
+});
+
     
     // Get remaining time
     const remainingTime = slowmodeManager.getRemainingTime(userId, channelId, slowmodeDuration);
