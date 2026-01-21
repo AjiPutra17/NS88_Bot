@@ -96,12 +96,31 @@ class RegistrationHandler {
 
       await interaction.channel.send({ embeds: [embed], components: [button] });
 
+      // Auto-send notification to notification channel
+      if (config.CHANNELS.REGISTRATION_NOTIFY) {
+        try {
+          const notifyChannel = await interaction.guild.channels.fetch(config.CHANNELS.REGISTRATION_NOTIFY);
+          
+          if (notifyChannel) {
+            const notifyEmbed = RegistrationEmbeds.createNotificationEmbed(session);
+            await notifyChannel.send({ 
+              content: '@everyone', // Ping everyone
+              embeds: [notifyEmbed] 
+            });
+            Logger.success(`Notification sent to ${notifyChannel.name}`);
+          }
+        } catch (error) {
+          Logger.warning('Could not send notification to notification channel');
+        }
+      }
+
       await interaction.editReply({
         content: `✅ **Tiket pendaftaran berhasil dibuka!**\n\n` +
           `📌 **Nama Sesi:** ${sessionName}\n` +
           `💰 **Biaya:** Rp ${fee.toLocaleString('id-ID')}\n` +
           `🆔 **Session ID:** \`${session.id}\`\n\n` +
-          `Member sekarang bisa mendaftar di channel ini!`
+          `Member sekarang bisa mendaftar di channel ini!` +
+          (config.CHANNELS.REGISTRATION_NOTIFY ? `\n\n✅ Notifikasi otomatis telah dikirim!` : '')
       });
 
       Logger.success(`Registration opened: ${session.id} by ${interaction.user.tag}`);

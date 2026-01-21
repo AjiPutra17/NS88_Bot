@@ -13,13 +13,14 @@ const CONFIG = {
     ACTIVITY_TYPE: ActivityType.Watching,
     PREFIX: '!'
   },
-
+  
   // Channel IDs (from environment variables)
   CHANNELS: {
     SETUP: process.env.SETUP_CHANNEL_ID || null,
     ARCHIVE: process.env.ARCHIVE_CHANNEL_ID || null,
     TICKET: process.env.TICKET_CHANNEL || null,
-    WARNING: (process.env.WARNING_CHANNEL_IDS || '').split(',').filter(Boolean)
+    WARNING: (process.env.WARNING_CHANNEL_IDS || '').split(',').filter(Boolean),
+    REGISTRATION_NOTIFY: process.env.REGISTRATION_NOTIFY_CHANNEL_ID || null // Channel untuk auto notification
   },
 
   // Admin Settings

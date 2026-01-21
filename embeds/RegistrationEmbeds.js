@@ -7,6 +7,31 @@ const config = require('../config/config');
 
 class RegistrationEmbeds {
   /**
+   * Create notification embed for auto-send to notification channel
+   */
+  static createNotificationEmbed(session) {
+    return new EmbedBuilder()
+      .setColor(config.COLORS.SUCCESS)
+      .setTitle('🎫 Pendaftaran Dibuka!')
+      .setDescription(
+        `**${session.sessionName}**\n\n` +
+        `📝 Pendaftaran telah dibuka untuk semua member!\n\n` +
+        `💰 **Biaya Pendaftaran:** Rp ${session.fee.toLocaleString('id-ID')}\n` +
+        `📍 **Channel Pendaftaran:** <#${session.channelId}>\n\n` +
+        `**Cara Mendaftar:**\n` +
+        `1️⃣ Masuk ke channel pendaftaran\n` +
+        `2️⃣ Klik tombol "📝 Daftar Sekarang"\n` +
+        `3️⃣ Pilih member akamsiNS88 untuk kenalan\n` +
+        `4️⃣ Isi form pendaftaran\n` +
+        `5️⃣ Channel private akan dibuat\n` +
+        `6️⃣ Upload bukti pembayaran\n\n` +
+        `✨ **Yuk daftar sekarang!**`
+      )
+      .setFooter({ text: `${session.id} | ${config.BOT.NAME} 🤖` })
+      .setTimestamp();
+  }
+
+  /**
    * Create setup panel embed for admin
    */
   static createSetupPanelEmbed() {
