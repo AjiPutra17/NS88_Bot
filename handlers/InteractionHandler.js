@@ -42,17 +42,21 @@ class InteractionHandler {
         await this.cancelTicket(interaction);
       }
       // Registration buttons
-      else if (customId === 'create_registration_session') {
-        await RegistrationHandler.showCreateSessionModal(interaction);
+      else if (customId === 'open_registration_ticket') {
+        await RegistrationHandler.showOpenTicketModal(interaction);
       } else if (customId.startsWith('register_')) {
         const sessionId = customId.split('_')[1];
-        await RegistrationHandler.showRegistrationModal(interaction, sessionId);
-      } else if (customId.startsWith('unregister_')) {
-        const sessionId = customId.split('_')[1];
-        await RegistrationHandler.handleUnregister(interaction, sessionId);
-      } else if (customId.startsWith('view_participants_')) {
-        const sessionId = customId.split('_')[2];
-        await RegistrationHandler.handleViewParticipants(interaction, sessionId);
+        await RegistrationHandler.showRegistrationForm(interaction, sessionId);
+      } else if (customId.startsWith('confirm_payment_')) {
+        const parts = customId.split('_');
+        const sessionId = parts[2];
+        const userId = parts[3];
+        await RegistrationHandler.handlePaymentConfirmation(interaction, sessionId, userId);
+      } else if (customId.startsWith('cancel_registration_')) {
+        const parts = customId.split('_');
+        const sessionId = parts[2];
+        const userId = parts[3];
+        await RegistrationHandler.handleCancelRegistration(interaction, sessionId, userId);
       }
     } catch (error) {
       Logger.error('Error handling button interaction', error);
@@ -234,21 +238,29 @@ class InteractionHandler {
   }
 
   /**
-   * Handle user select menu
+   * Handle user select menu and string select menu
    */
   static async handleUserSelect(interaction) {
     const { customId, values } = interaction;
 
     try {
+      // User select menu for tickets
       if (customId.startsWith('select_buyer_')) {
         await this.addBuyer(interaction, values[0]);
       } else if (customId.startsWith('select_seller_')) {
         await this.addSeller(interaction, values[0]);
       }
+      // String select menu for kenalan
+      else if (customId.startsWith('select_kenalan_')) {
+        const parts = customId.split('_');
+        const sessionId = parts[2];
+        const userId = parts[3];
+        await RegistrationHandler.handleKenalanSelect(interaction, sessionId, userId);
+      }
     } catch (error) {
-      Logger.error('Error handling user select', error);
+      Logger.error('Error handling select menu', error);
       await interaction.update({
-        content: '❌ **Error:** Terjadi kesalahan saat menambahkan user!',
+        content: '❌ **Error:** Terjadi kesalahan!',
         components: []
       });
     }
@@ -338,9 +350,11 @@ class InteractionHandler {
       return this.handleTicketModalSubmit(interaction);
     } else if (interaction.customId === 'registration_session_form') {
       return RegistrationHandler.handleCreateSessionSubmit(interaction);
-    } else if (interaction.customId.startsWith('registration_form_')) {
-      const sessionId = interaction.customId.split('_')[2];
-      return RegistrationHandler.handleRegistrationSubmit(interaction, sessionId);
+    } else if (interaction.customId.startsWith('registration_final_')) {
+      const parts = interaction.customId.split('_');
+      const sessionId = parts[2];
+      const kenalanId = parts[3];
+      return RegistrationHandler.handleFinalRegistration(interaction, sessionId, kenalanId);
     }
   }
 

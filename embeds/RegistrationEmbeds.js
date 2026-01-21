@@ -7,6 +7,26 @@ const config = require('../config/config');
 
 class RegistrationEmbeds {
   /**
+   * Create setup panel embed for admin
+   */
+  static createSetupPanelEmbed() {
+    return new EmbedBuilder()
+      .setColor(config.COLORS.PRIMARY)
+      .setTitle('🎫 Panel Pendaftaran')
+      .setDescription(
+        '**Selamat datang di sistem pendaftaran!**\n\n' +
+        '📋 **Untuk Admin:**\n' +
+        'Klik tombol **"BUKA TIKET PENDAFTARAN"** di bawah untuk membuka sesi pendaftaran baru.\n\n' +
+        'Anda akan diminta mengisi:\n' +
+        '• Nama Sesi\n' +
+        '• Biaya Pendaftaran\n\n' +
+        '✨ Channel ini akan menjadi tempat pendaftaran untuk semua member!'
+      )
+      .setFooter({ text: `${config.BOT.NAME} 🤖` })
+      .setTimestamp();
+  }
+
+  /**
    * Create registration ticket embed (in private channel)
    */
   static createRegistrationTicketEmbed(session, registration, user, kenalanMember) {

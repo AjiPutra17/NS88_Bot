@@ -8,142 +8,119 @@ const {
   TextInputStyle,
   ActionRowBuilder,
   ButtonBuilder,
-  ButtonStyle
+  ButtonStyle,
+  StringSelectMenuBuilder,
+  ChannelType,
+  PermissionFlagsBits
 } = require('discord.js');
 const RegistrationEmbeds = require('../embeds/RegistrationEmbeds');
+const Utils = require('../utils');
 const Logger = require('../utils/logger');
 const { registrationManager } = require('../managers');
+const config = require('../config/config');
 
 class RegistrationHandler {
   /**
-   * Show create registration session modal
+   * Show modal for opening registration ticket
    */
-  static async showCreateSessionModal(interaction) {
+  static async showOpenTicketModal(interaction) {
+    if (!interaction.member.permissions.has(PermissionFlagsBits.Administrator)) {
+      return interaction.reply({
+        content: '❌ **Error:** Hanya admin yang bisa membuka tiket pendaftaran!',
+        flags: 64
+      });
+    }
+
     const modal = new ModalBuilder()
-      .setCustomId('registration_session_form')
-      .setTitle('📋 Buat Sesi Pendaftaran');
+      .setCustomId('open_ticket_modal')
+      .setTitle('🎫 Buka Tiket Pendaftaran');
 
-    const inputs = [
-      {
-        id: 'event_name',
-        label: 'Nama Event/Kegiatan',
-        placeholder: 'Contoh: Tournament Mobile Legends',
-        style: TextInputStyle.Short,
-        required: true
-      },
-      {
-        id: 'description',
-        label: 'Deskripsi Event',
-        placeholder: 'Jelaskan detail event secara singkat',
-        style: TextInputStyle.Paragraph,
-        required: true
-      },
-      {
-        id: 'max_participants',
-        label: 'Maksimal Peserta (kosongkan untuk unlimited)',
-        placeholder: 'Contoh: 50',
-        style: TextInputStyle.Short,
-        required: false
-      },
-      {
-        id: 'requirements',
-        label: 'Syarat & Ketentuan',
-        placeholder: 'Contoh: Minimal level 30, punya hero 20+',
-        style: TextInputStyle.Paragraph,
-        required: false
-      },
-      {
-        id: 'additional_info',
-        label: 'Informasi Tambahan',
-        placeholder: 'Hadiah, jadwal, dll',
-        style: TextInputStyle.Paragraph,
-        required: false
-      }
-    ];
+    const sessionNameInput = new TextInputBuilder()
+      .setCustomId('session_name')
+      .setLabel('Nama Sesi')
+      .setStyle(TextInputStyle.Short)
+      .setPlaceholder('Contoh: Tournament-MLBB')
+      .setRequired(true);
 
-    const rows = inputs.map(input => {
-      const textInput = new TextInputBuilder()
-        .setCustomId(input.id)
-        .setLabel(input.label)
-        .setStyle(input.style)
-        .setPlaceholder(input.placeholder)
-        .setRequired(input.required);
-      return new ActionRowBuilder().addComponents(textInput);
-    });
+    const feeInput = new TextInputBuilder()
+      .setCustomId('fee')
+      .setLabel('Biaya Pendaftaran (Angka saja)')
+      .setStyle(TextInputStyle.Short)
+      .setPlaceholder('Contoh: 50000')
+      .setRequired(true);
 
-    modal.addComponents(...rows);
+    modal.addComponents(
+      new ActionRowBuilder().addComponents(sessionNameInput),
+      new ActionRowBuilder().addComponents(feeInput)
+    );
+
     await interaction.showModal(modal);
-    Logger.info(`Registration session modal shown to ${interaction.user.tag}`);
+    Logger.info(`Open ticket modal shown to ${interaction.user.tag}`);
   }
 
   /**
-   * Handle create session modal submit
+   * Handle open ticket modal submit
    */
-  static async handleCreateSessionSubmit(interaction) {
+  static async handleOpenTicketSubmit(interaction) {
     try {
       await interaction.deferReply({ flags: 64 });
 
-      const eventName = interaction.fields.getTextInputValue('event_name');
-      const description = interaction.fields.getTextInputValue('description');
-      const maxParticipantsRaw = interaction.fields.getTextInputValue('max_participants');
-      const requirements = interaction.fields.getTextInputValue('requirements') || 'Tidak ada syarat khusus';
-      const additionalInfo = interaction.fields.getTextInputValue('additional_info') || '';
+      const sessionName = interaction.fields.getTextInputValue('session_name');
+      const feeRaw = interaction.fields.getTextInputValue('fee').replace(/\D/g, '');
+      const fee = parseInt(feeRaw);
 
-      const maxParticipants = maxParticipantsRaw ? parseInt(maxParticipantsRaw) : null;
-
-      // Validate max participants
-      if (maxParticipantsRaw && (isNaN(maxParticipants) || maxParticipants < 1)) {
+      if (isNaN(fee) || fee < 0) {
         return interaction.editReply({
-          content: '❌ **Error:** Maksimal peserta harus berupa angka positif!'
+          content: '❌ **Error:** Biaya harus berupa angka positif!'
         });
       }
 
       // Create session
       const session = registrationManager.createSession({
-        eventName,
-        description,
-        maxParticipants,
-        requirements,
-        additionalInfo,
-        creatorId: interaction.user.id
+        sessionName,
+        fee,
+        creatorId: interaction.user.id,
+        channelId: interaction.channel.id // Use current channel
       });
 
-      // Create embed and buttons
+      // Update original message with registration panel
       const embed = RegistrationEmbeds.createSessionEmbed(session);
-      const buttons = this.createSessionButtons(session.id);
+      const button = new ActionRowBuilder()
+        .addComponents(
+          new ButtonBuilder()
+            .setCustomId(`register_${session.id}`)
+            .setLabel('📝 Daftar Sekarang')
+            .setStyle(ButtonStyle.Success)
+            .setEmoji('✨')
+        );
 
-      // Send to channel
-      await interaction.channel.send({ embeds: [embed], components: [buttons] });
+      await interaction.channel.send({ embeds: [embed], components: [button] });
 
       await interaction.editReply({
-        content: `✅ **Sesi pendaftaran berhasil dibuat!**\n\n` +
-          `📌 **Session ID:** \`${session.id}\`\n` +
-          `📝 **Event:** ${eventName}\n` +
-          `🟢 **Status:** Dibuka\n\n` +
-          `**Commands yang bisa digunakan:**\n` +
-          `• \`!close-registration ${session.id}\` - Tutup pendaftaran\n` +
-          `• \`!open-registration ${session.id}\` - Buka kembali pendaftaran\n` +
-          `• \`!list-participants ${session.id}\` - Lihat daftar peserta\n` +
-          `• \`!delete-registration ${session.id}\` - Hapus sesi`
+        content: `✅ **Tiket pendaftaran berhasil dibuka!**\n\n` +
+          `📌 **Nama Sesi:** ${sessionName}\n` +
+          `💰 **Biaya:** Rp ${fee.toLocaleString('id-ID')}\n` +
+          `🆔 **Session ID:** \`${session.id}\`\n\n` +
+          `Member sekarang bisa mendaftar di channel ini!`
       });
 
-      Logger.success(`Registration session ${session.id} created by ${interaction.user.tag}`);
+      Logger.success(`Registration opened: ${session.id} by ${interaction.user.tag}`);
 
     } catch (error) {
-      Logger.error('Error creating registration session', error);
+      Logger.error('Error opening registration ticket', error);
       
       if (interaction.deferred) {
         await interaction.editReply({
-          content: '❌ **Error:** Gagal membuat sesi pendaftaran!'
+          content: '❌ **Error:** Gagal membuka tiket pendaftaran!'
         });
       }
     }
   }
 
   /**
-   * Show registration form modal
+   * Show registration form with dropdown
    */
-  static async showRegistrationModal(interaction, sessionId) {
+  static async showRegistrationForm(interaction, sessionId) {
     const session = registrationManager.getSession(sessionId);
     
     if (!session) {
@@ -163,66 +140,113 @@ class RegistrationHandler {
     // Check if already registered
     if (registrationManager.isRegistered(sessionId, interaction.user.id)) {
       return interaction.reply({
-        content: '⚠️ Anda sudah terdaftar untuk event ini!',
+        content: '⚠️ Anda sudah terdaftar untuk sesi ini!',
         flags: 64
       });
     }
 
-    // Check if session is full
-    if (session.maxParticipants && session.participants.length >= session.maxParticipants) {
+    // Get members with "akamsiNS88" role
+    const akamsiRole = interaction.guild.roles.cache.find(role => role.name === 'akamsiNS88');
+    
+    if (!akamsiRole) {
       return interaction.reply({
-        content: '❌ **Maaf, pendaftaran sudah penuh!**',
+        content: '❌ **Error:** Role "akamsiNS88" tidak ditemukan! Hubungi admin.',
         flags: 64
       });
     }
 
-    const modal = new ModalBuilder()
-      .setCustomId(`registration_form_${sessionId}`)
-      .setTitle(`📝 Pendaftaran - ${session.eventName}`);
+    const akamsiMembers = interaction.guild.members.cache.filter(member => 
+      member.roles.cache.has(akamsiRole.id) && !member.user.bot
+    );
 
-    const inputs = [
-      {
-        id: 'name',
-        label: 'Nama Lengkap',
-        placeholder: 'Masukkan nama lengkap Anda',
-        style: TextInputStyle.Short,
-        required: true
-      },
-      {
-        id: 'contact',
-        label: 'Kontak (WA/Telegram/Email)',
-        placeholder: 'Contoh: 08123456789 atau @username',
-        style: TextInputStyle.Short,
-        required: true
-      },
-      {
-        id: 'notes',
-        label: 'Catatan Tambahan (Opsional)',
-        placeholder: 'Tim/Squad, Role, dll',
-        style: TextInputStyle.Paragraph,
-        required: false
-      }
-    ];
+    if (akamsiMembers.size === 0) {
+      return interaction.reply({
+        content: '❌ **Error:** Tidak ada member dengan role "akamsiNS88"!',
+        flags: 64
+      });
+    }
 
-    const rows = inputs.map(input => {
-      const textInput = new TextInputBuilder()
-        .setCustomId(input.id)
-        .setLabel(input.label)
-        .setStyle(input.style)
-        .setPlaceholder(input.placeholder)
-        .setRequired(input.required);
-      return new ActionRowBuilder().addComponents(textInput);
+    // Create dropdown options (max 25)
+    const options = akamsiMembers.map(member => ({
+      label: `${member.user.username}`,
+      description: `Kenalan dengan ${member.displayName}`,
+      value: member.id,
+      emoji: '👋'
+    })).slice(0, 25);
+
+    const selectMenu = new StringSelectMenuBuilder()
+      .setCustomId(`select_kenalan_${sessionId}_${interaction.user.id}`)
+      .setPlaceholder('🔍 Pilih member untuk kenalan')
+      .addOptions(options);
+
+    const row = new ActionRowBuilder().addComponents(selectMenu);
+
+    // Store session temporarily
+    await interaction.reply({
+      content: `📝 **Formulir Pendaftaran - ${session.sessionName}**\n\n` +
+        `💰 **Biaya Pendaftaran:** Rp ${session.fee.toLocaleString('id-ID')}\n\n` +
+        `**Step 1/2:** Pilih member "akamsiNS88" yang ingin kamu kenalan:`,
+      components: [row],
+      flags: 64
     });
 
-    modal.addComponents(...rows);
-    await interaction.showModal(modal);
-    Logger.info(`Registration modal shown to ${interaction.user.tag} for ${sessionId}`);
+    Logger.info(`Registration form shown to ${interaction.user.tag} for ${sessionId}`);
   }
 
   /**
-   * Handle registration form submit
+   * Handle kenalan selection
    */
-  static async handleRegistrationSubmit(interaction, sessionId) {
+  static async handleKenalanSelect(interaction, sessionId, userId) {
+    // Verify this is the right user
+    if (interaction.user.id !== userId) {
+      return interaction.reply({
+        content: '❌ Ini bukan form pendaftaran Anda!',
+        flags: 64
+      });
+    }
+
+    const kenalanId = interaction.values[0];
+    const kenalanMember = await interaction.guild.members.fetch(kenalanId);
+
+    if (!kenalanMember) {
+      return interaction.update({
+        content: '❌ **Error:** Member tidak ditemukan!',
+        components: []
+      });
+    }
+
+    // Show modal for username and display name
+    const modal = new ModalBuilder()
+      .setCustomId(`registration_final_${sessionId}_${kenalanId}`)
+      .setTitle('📝 Form Pendaftaran');
+
+    const usernameInput = new TextInputBuilder()
+      .setCustomId('username')
+      .setLabel('Username')
+      .setStyle(TextInputStyle.Short)
+      .setPlaceholder('Masukkan username kamu')
+      .setRequired(true);
+
+    const displayNameInput = new TextInputBuilder()
+      .setCustomId('display_name')
+      .setLabel('Display Name')
+      .setStyle(TextInputStyle.Short)
+      .setPlaceholder('Masukkan display name kamu')
+      .setRequired(true);
+
+    modal.addComponents(
+      new ActionRowBuilder().addComponents(usernameInput),
+      new ActionRowBuilder().addComponents(displayNameInput)
+    );
+
+    await interaction.showModal(modal);
+    Logger.info(`Kenalan selected: ${kenalanMember.user.tag} by ${interaction.user.tag}`);
+  }
+
+  /**
+   * Handle final registration submit
+   */
+  static async handleFinalRegistration(interaction, sessionId, kenalanId) {
     try {
       await interaction.deferReply({ flags: 64 });
 
@@ -243,129 +267,206 @@ class RegistrationHandler {
       // Check if already registered
       if (registrationManager.isRegistered(sessionId, interaction.user.id)) {
         return interaction.editReply({
-          content: '⚠️ Anda sudah terdaftar untuk event ini!'
+          content: '⚠️ Anda sudah terdaftar!'
         });
       }
 
-      // Check if session is full
-      if (session.maxParticipants && session.participants.length >= session.maxParticipants) {
-        return interaction.editReply({
-          content: '❌ **Maaf, pendaftaran sudah penuh!**'
+      const username = interaction.fields.getTextInputValue('username');
+      const displayName = interaction.fields.getTextInputValue('display_name');
+      const kenalanMember = await interaction.guild.members.fetch(kenalanId);
+
+      // Create private ticket channel for this registration
+      const ticketChannel = await interaction.guild.channels.create({
+        name: `${session.sessionName}-${interaction.user.username}`.toLowerCase(),
+        type: ChannelType.GuildText,
+        parent: interaction.channel.parentId,
+        topic: `Pendaftaran ${session.sessionName} - ${interaction.user.tag}`,
+        permissionOverwrites: [
+          {
+            id: interaction.guild.id,
+            deny: [PermissionFlagsBits.ViewChannel],
+          },
+          {
+            id: interaction.user.id,
+            allow: [
+              PermissionFlagsBits.ViewChannel,
+              PermissionFlagsBits.SendMessages,
+              PermissionFlagsBits.AttachFiles,
+              PermissionFlagsBits.ReadMessageHistory
+            ],
+          },
+          {
+            id: kenalanMember.id,
+            allow: [
+              PermissionFlagsBits.ViewChannel,
+              PermissionFlagsBits.SendMessages,
+              PermissionFlagsBits.ReadMessageHistory
+            ],
+          },
+          {
+            id: interaction.client.user.id,
+            allow: [
+              PermissionFlagsBits.ViewChannel,
+              PermissionFlagsBits.SendMessages,
+              PermissionFlagsBits.EmbedLinks,
+              PermissionFlagsBits.ManageChannels,
+              PermissionFlagsBits.ReadMessageHistory
+            ],
+          },
+        ],
+      });
+
+      // Add admins to channel
+      const admins = Utils.getAdmins(interaction.guild);
+      for (const [_, admin] of admins) {
+        await ticketChannel.permissionOverwrites.create(admin.id, {
+          ViewChannel: true,
+          SendMessages: true,
+          ReadMessageHistory: true
         });
       }
-
-      const name = interaction.fields.getTextInputValue('name');
-      const contact = interaction.fields.getTextInputValue('contact');
-      const notes = interaction.fields.getTextInputValue('notes') || '';
 
       // Add registration
       const registration = registrationManager.addRegistration(sessionId, interaction.user.id, {
-        name,
-        contact,
-        notes
+        username,
+        displayName,
+        kenalanId,
+        kenalanTag: kenalanMember.user.tag,
+        ticketChannelId: ticketChannel.id
       });
 
-      // Send success embed
-      const embed = RegistrationEmbeds.createRegistrationSuccessEmbed(session, {
-        name,
-        contact,
-        notes
-      });
-
-      await interaction.editReply({ embeds: [embed] });
-
-      // Notify in channel
-      await interaction.channel.send(
-        `✅ **${interaction.user.tag}** telah mendaftar untuk **${session.eventName}**!\n` +
-        `📊 Total peserta: **${session.participants.length}/${session.maxParticipants || '∞'}**`
+      // Send embed to ticket channel
+      const embed = RegistrationEmbeds.createRegistrationTicketEmbed(
+        session,
+        registration,
+        interaction.user,
+        kenalanMember
       );
 
-      Logger.success(`${interaction.user.tag} registered for ${sessionId}`);
+      const buttons = new ActionRowBuilder()
+        .addComponents(
+          new ButtonBuilder()
+            .setCustomId(`confirm_payment_${sessionId}_${interaction.user.id}`)
+            .setLabel('✅ Konfirmasi Pembayaran')
+            .setStyle(ButtonStyle.Success),
+          new ButtonBuilder()
+            .setCustomId(`cancel_registration_${sessionId}_${interaction.user.id}`)
+            .setLabel('❌ Batalkan Pendaftaran')
+            .setStyle(ButtonStyle.Danger)
+        );
+
+      await ticketChannel.send({ 
+        content: `${interaction.user} ${kenalanMember}`, 
+        embeds: [embed],
+        components: [buttons]
+      });
+
+      // Reply to user
+      await interaction.editReply({
+        content: `✅ **Pendaftaran berhasil dibuat!**\n\n` +
+          `📍 **Channel Pendaftaran:** ${ticketChannel}\n` +
+          `🆔 **Ticket ID:** \`${registration.ticketId}\`\n` +
+          `💰 **Biaya:** Rp ${session.fee.toLocaleString('id-ID')}\n` +
+          `👋 **Kenalan dengan:** ${kenalanMember.user.tag}\n\n` +
+          `Silakan lakukan pembayaran dan upload bukti di channel tersebut!`
+      });
+
+      Logger.success(`Registration ticket created for ${interaction.user.tag} - ${registration.ticketId}`);
 
     } catch (error) {
-      Logger.error('Error handling registration submit', error);
+      Logger.error('Error creating registration ticket', error);
       
       if (interaction.deferred) {
         await interaction.editReply({
-          content: '❌ **Error:** Gagal mendaftar!'
+          content: '❌ **Error:** Gagal membuat tiket pendaftaran!'
         });
       }
     }
   }
 
   /**
-   * Handle unregister
+   * Handle payment confirmation
    */
-  static async handleUnregister(interaction, sessionId) {
-    const session = registrationManager.getSession(sessionId);
+  static async handlePaymentConfirmation(interaction, sessionId, userId) {
+    if (!interaction.member.permissions.has(PermissionFlagsBits.Administrator)) {
+      return interaction.reply({
+        content: '❌ **Error:** Hanya admin yang bisa konfirmasi pembayaran!',
+        flags: 64
+      });
+    }
+
+    const registration = registrationManager.getRegistration(sessionId, userId);
     
-    if (!session) {
+    if (!registration) {
       return interaction.reply({
-        content: '❌ **Error:** Sesi pendaftaran tidak ditemukan!',
+        content: '❌ **Error:** Pendaftaran tidak ditemukan!',
         flags: 64
       });
     }
 
-    if (!registrationManager.isRegistered(sessionId, interaction.user.id)) {
+    if (registration.paid) {
       return interaction.reply({
-        content: '⚠️ Anda belum terdaftar untuk event ini!',
+        content: '⚠️ Pembayaran sudah dikonfirmasi sebelumnya!',
         flags: 64
       });
     }
 
-    registrationManager.removeRegistration(sessionId, interaction.user.id);
-
-    await interaction.reply({
-      content: `✅ **Pendaftaran Anda untuk ${session.eventName} telah dibatalkan!**\n` +
-        `📊 Total peserta: **${session.participants.length}/${session.maxParticipants || '∞'}**`,
-      flags: 64
+    registrationManager.updateRegistration(sessionId, userId, {
+      paid: true,
+      status: 'approved',
+      paidAt: new Date(),
+      approvedBy: interaction.user.id
     });
 
-    Logger.info(`${interaction.user.tag} unregistered from ${sessionId}`);
+    await interaction.reply({
+      content: `✅ **Pembayaran dikonfirmasi!**\n\n` +
+        `Pendaftaran <@${userId}> telah disetujui.\n` +
+        `Terima kasih! 🎉`
+    });
+
+    Logger.success(`Payment confirmed for ${userId} by ${interaction.user.tag}`);
   }
 
   /**
-   * Create session buttons
+   * Handle cancel registration
    */
-  static createSessionButtons(sessionId) {
-    return new ActionRowBuilder()
-      .addComponents(
-        new ButtonBuilder()
-          .setCustomId(`register_${sessionId}`)
-          .setLabel('Daftar')
-          .setStyle(ButtonStyle.Success)
-          .setEmoji('📝'),
-        new ButtonBuilder()
-          .setCustomId(`unregister_${sessionId}`)
-          .setLabel('Batal Daftar')
-          .setStyle(ButtonStyle.Danger)
-          .setEmoji('❌'),
-        new ButtonBuilder()
-          .setCustomId(`view_participants_${sessionId}`)
-          .setLabel('Lihat Peserta')
-          .setStyle(ButtonStyle.Primary)
-          .setEmoji('👥')
-      );
-  }
+  static async handleCancelRegistration(interaction, sessionId, userId) {
+    const isAdmin = interaction.member.permissions.has(PermissionFlagsBits.Administrator);
+    const isOwner = interaction.user.id === userId;
 
-  /**
-   * Handle view participants button
-   */
-  static async handleViewParticipants(interaction, sessionId) {
-    const session = registrationManager.getSession(sessionId);
-    
-    if (!session) {
+    if (!isAdmin && !isOwner) {
       return interaction.reply({
-        content: '❌ **Error:** Sesi pendaftaran tidak ditemukan!',
+        content: '❌ **Error:** Hanya admin atau pemilik pendaftaran yang bisa membatalkan!',
         flags: 64
       });
     }
 
-    const registrations = registrationManager.getSessionRegistrations(sessionId);
-    const embed = RegistrationEmbeds.createParticipantListEmbed(session, registrations, interaction.guild);
+    const registration = registrationManager.getRegistration(sessionId, userId);
+    
+    if (!registration) {
+      return interaction.reply({
+        content: '❌ **Error:** Pendaftaran tidak ditemukan!',
+        flags: 64
+      });
+    }
 
-    await interaction.reply({ embeds: [embed], flags: 64 });
-    Logger.info(`${interaction.user.tag} viewed participants for ${sessionId}`);
+    await interaction.reply({
+      content: `❌ **Pendaftaran dibatalkan!**\n\nChannel ini akan dihapus dalam 5 detik...`
+    });
+
+    setTimeout(async () => {
+      try {
+        const channel = await interaction.guild.channels.fetch(registration.ticketChannelId);
+        if (channel) {
+          await channel.delete();
+        }
+      } catch (error) {
+        Logger.error('Error deleting registration channel', error);
+      }
+    }, 5000);
+
+    registrationManager.removeRegistration(sessionId, userId);
+    Logger.info(`Registration cancelled for ${userId}`);
   }
 }
 

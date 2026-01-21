@@ -139,10 +139,7 @@ class EmbedFactory {
         },
         {
           name: '📋 REGISTRATION SYSTEM',
-          value: `\`${config.BOT.PREFIX}open-ticket <nama-sesi> <biaya>\` - Buka tiket pendaftaran (Admin)\n` +
-                 `\`${config.BOT.PREFIX}close-ticket <id>\` - Tutup pendaftaran (Admin)\n` +
-                 `\`${config.BOT.PREFIX}list-participants <id>\` - Lihat daftar peserta\n` +
-                 `\`${config.BOT.PREFIX}list-sessions\` - Lihat semua sesi`,
+          value: `\`${config.BOT.PREFIX}setup-registration\` - Setup panel pendaftaran (Admin)`,
           inline: false
         },
         { 
