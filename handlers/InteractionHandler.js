@@ -19,6 +19,7 @@ const Utils = require('../utils');
 const Logger = require('../utils/logger');
 const { ticketManager } = require('../managers');
 const TicketOperations = require('./TicketOperations');
+const RegistrationHandler = require('./RegistrationHandler');
 
 class InteractionHandler {
   /**
@@ -28,6 +29,7 @@ class InteractionHandler {
     const { customId } = interaction;
 
     try {
+      // Ticket buttons
       if (customId === 'create_ticket') {
         await this.showTicketModal(interaction);
       } else if (customId.startsWith('add_buyer_')) {
@@ -38,6 +40,19 @@ class InteractionHandler {
         await this.completeTicket(interaction);
       } else if (customId.startsWith('cancel_')) {
         await this.cancelTicket(interaction);
+      }
+      // Registration buttons
+      else if (customId === 'create_registration_session') {
+        await RegistrationHandler.showCreateSessionModal(interaction);
+      } else if (customId.startsWith('register_')) {
+        const sessionId = customId.split('_')[1];
+        await RegistrationHandler.showRegistrationModal(interaction, sessionId);
+      } else if (customId.startsWith('unregister_')) {
+        const sessionId = customId.split('_')[1];
+        await RegistrationHandler.handleUnregister(interaction, sessionId);
+      } else if (customId.startsWith('view_participants_')) {
+        const sessionId = customId.split('_')[2];
+        await RegistrationHandler.handleViewParticipants(interaction, sessionId);
       }
     } catch (error) {
       Logger.error('Error handling button interaction', error);
@@ -319,9 +334,20 @@ class InteractionHandler {
    * Handle modal submit
    */
   static async handleModalSubmit(interaction) {
-    if (interaction.customId !== 'ticket_form') {
-      return;
+    if (interaction.customId === 'ticket_form') {
+      return this.handleTicketModalSubmit(interaction);
+    } else if (interaction.customId === 'registration_session_form') {
+      return RegistrationHandler.handleCreateSessionSubmit(interaction);
+    } else if (interaction.customId.startsWith('registration_form_')) {
+      const sessionId = interaction.customId.split('_')[2];
+      return RegistrationHandler.handleRegistrationSubmit(interaction, sessionId);
     }
+  }
+
+  /**
+   * Handle ticket modal submit (renamed from handleModalSubmit)
+   */
+  static async handleTicketModalSubmit(interaction) {
 
     try {
       await interaction.deferReply({ flags: 64 });

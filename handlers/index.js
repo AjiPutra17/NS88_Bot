@@ -8,6 +8,7 @@ const SlowmodeHandler = require('./SlowmodeHandler');
 const WarningHandler = require('./WarningHandler');
 const PaymentProofHandler = require('./PaymentProofHandler');
 const TicketOperations = require('./TicketOperations');
+const RegistrationHandler = require('./RegistrationHandler');
 
 module.exports = {
   CommandHandler,
@@ -15,5 +16,6 @@ module.exports = {
   SlowmodeHandler,
   WarningHandler,
   PaymentProofHandler,
-  TicketOperations
+  TicketOperations,
+  RegistrationHandler
 };

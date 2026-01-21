@@ -9,7 +9,7 @@ async function interactionCreate(interaction) {
   try {
     if (interaction.isButton()) {
       await InteractionHandler.handleButton(interaction);
-    } else if (interaction.isUserSelectMenu()) {
+    } else if (interaction.isUserSelectMenu() || interaction.isStringSelectMenu()) {
       await InteractionHandler.handleUserSelect(interaction);
     } else if (interaction.isModalSubmit()) {
       await InteractionHandler.handleModalSubmit(interaction);
