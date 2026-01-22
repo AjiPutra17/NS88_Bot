@@ -16,22 +16,29 @@ class RegistrationManager {
    * Create new registration session
    */
   createSession(data) {
-    const id = `${data.sessionName || `SESI-${this.counter++}`}`;
-    const session = {
-      id,
-      ...data,
-      status: 'open', // open, closed
-      createdAt: new Date(),
-      updatedAt: new Date(),
-      createdBy: data.creatorId,
-      participants: [],
-      channelId: data.channelId // Main registration channel
-    };
-    
-    this.sessions.set(id, session);
-    this.registrations.set(id, new Map());
-    
-    return session;
+    try {
+      const id = data.sessionName || `SESI-${this.counter++}`;
+      
+      const session = {
+        id,
+        sessionName: data.sessionName,
+        fee: data.fee,
+        status: 'open', // open, closed
+        createdAt: new Date(),
+        updatedAt: new Date(),
+        createdBy: data.creatorId,
+        participants: [],
+        channelId: data.channelId // Main registration channel
+      };
+      
+      this.sessions.set(id, session);
+      this.registrations.set(id, new Map());
+      
+      return session;
+    } catch (error) {
+      console.error('Error creating session:', error);
+      throw error;
+    }
   }
 
   /**

@@ -346,15 +346,34 @@ class InteractionHandler {
    * Handle modal submit
    */
   static async handleModalSubmit(interaction) {
-    if (interaction.customId === 'ticket_form') {
-      return this.handleTicketModalSubmit(interaction);
-    } else if (interaction.customId === 'registration_session_form') {
-      return RegistrationHandler.handleCreateSessionSubmit(interaction);
-    } else if (interaction.customId.startsWith('registration_final_')) {
-      const parts = interaction.customId.split('_');
-      const sessionId = parts[2];
-      const kenalanId = parts[3];
-      return RegistrationHandler.handleFinalRegistration(interaction, sessionId, kenalanId);
+    try {
+      if (interaction.customId === 'ticket_form') {
+        return this.handleTicketModalSubmit(interaction);
+      } else if (interaction.customId === 'open_ticket_modal') {
+        return RegistrationHandler.handleOpenTicketSubmit(interaction);
+      } else if (interaction.customId.startsWith('registration_final_')) {
+        const parts = interaction.customId.split('_');
+        const sessionId = parts[2];
+        const kenalanId = parts[3];
+        return RegistrationHandler.handleFinalRegistration(interaction, sessionId, kenalanId);
+      }
+    } catch (error) {
+      Logger.error('Error in handleModalSubmit', error);
+      
+      try {
+        if (interaction.deferred) {
+          await interaction.editReply({
+            content: '❌ **Error:** Terjadi kesalahan saat memproses form!\n```' + error.message + '```'
+          });
+        } else if (!interaction.replied) {
+          await interaction.reply({
+            content: '❌ **Error:** Terjadi kesalahan saat memproses form!\n```' + error.message + '```',
+            flags: 64
+          });
+        }
+      } catch (replyError) {
+        Logger.error('Error sending error reply', replyError);
+      }
     }
   }
 

@@ -24,38 +24,52 @@ class RegistrationHandler {
    * Show modal for opening registration ticket
    */
   static async showOpenTicketModal(interaction) {
-    if (!interaction.member.permissions.has(PermissionFlagsBits.Administrator)) {
-      return interaction.reply({
-        content: '❌ **Error:** Hanya admin yang bisa membuka tiket pendaftaran!',
-        flags: 64
-      });
+    try {
+      if (!interaction.member.permissions.has(PermissionFlagsBits.Administrator)) {
+        return interaction.reply({
+          content: '❌ **Error:** Hanya admin yang bisa membuka tiket pendaftaran!',
+          flags: 64
+        });
+      }
+
+      const modal = new ModalBuilder()
+        .setCustomId('open_ticket_modal')
+        .setTitle('🎫 Buka Tiket Pendaftaran');
+
+      const sessionNameInput = new TextInputBuilder()
+        .setCustomId('session_name')
+        .setLabel('Nama Sesi')
+        .setStyle(TextInputStyle.Short)
+        .setPlaceholder('Contoh: Tournament-MLBB')
+        .setRequired(true)
+        .setMaxLength(50);
+
+      const feeInput = new TextInputBuilder()
+        .setCustomId('fee')
+        .setLabel('Biaya Pendaftaran (Angka saja)')
+        .setStyle(TextInputStyle.Short)
+        .setPlaceholder('Contoh: 50000')
+        .setRequired(true)
+        .setMaxLength(10);
+
+      modal.addComponents(
+        new ActionRowBuilder().addComponents(sessionNameInput),
+        new ActionRowBuilder().addComponents(feeInput)
+      );
+
+      await interaction.showModal(modal);
+      Logger.info(`Open ticket modal shown to ${interaction.user.tag}`);
+      
+    } catch (error) {
+      Logger.error('Error showing open ticket modal', error);
+      
+      if (!interaction.replied) {
+        await interaction.reply({
+          content: '❌ **Error:** Gagal menampilkan form!',
+          flags: 64
+        });
+      }
     }
-
-    const modal = new ModalBuilder()
-      .setCustomId('open_ticket_modal')
-      .setTitle('🎫 Buka Tiket Pendaftaran');
-
-    const sessionNameInput = new TextInputBuilder()
-      .setCustomId('session_name')
-      .setLabel('Nama Sesi')
-      .setStyle(TextInputStyle.Short)
-      .setPlaceholder('Contoh: Tournament-MLBB')
-      .setRequired(true);
-
-    const feeInput = new TextInputBuilder()
-      .setCustomId('fee')
-      .setLabel('Biaya Pendaftaran (Angka saja)')
-      .setStyle(TextInputStyle.Short)
-      .setPlaceholder('Contoh: 50000')
-      .setRequired(true);
-
-    modal.addComponents(
-      new ActionRowBuilder().addComponents(sessionNameInput),
-      new ActionRowBuilder().addComponents(feeInput)
-    );
-
-    await interaction.showModal(modal);
-    Logger.info(`Open ticket modal shown to ${interaction.user.tag}`);
   }
 
   /**
@@ -63,7 +77,7 @@ class RegistrationHandler {
    */
   static async handleOpenTicketSubmit(interaction) {
     try {
-      await interaction.deferReply({ flags: 64 });
+      await interaction.deferReply();
 
       const sessionName = interaction.fields.getTextInputValue('session_name');
       const feeRaw = interaction.fields.getTextInputValue('fee').replace(/\D/g, '');
@@ -83,7 +97,7 @@ class RegistrationHandler {
         channelId: interaction.channel.id // Use current channel
       });
 
-      // Update original message with registration panel
+      // Create embed for registration
       const embed = RegistrationEmbeds.createSessionEmbed(session);
       const button = new ActionRowBuilder()
         .addComponents(
@@ -94,44 +108,45 @@ class RegistrationHandler {
             .setEmoji('✨')
         );
 
+      // Send to channel
       await interaction.channel.send({ embeds: [embed], components: [button] });
 
-      // Auto-send notification to notification channel
-      if (config.CHANNELS.REGISTRATION_NOTIFY) {
-        try {
-          const notifyChannel = await interaction.guild.channels.fetch(config.CHANNELS.REGISTRATION_NOTIFY);
-          
-          if (notifyChannel) {
-            const notifyEmbed = RegistrationEmbeds.createNotificationEmbed(session);
-            await notifyChannel.send({ 
-              content: '@everyone', // Ping everyone
-              embeds: [notifyEmbed] 
-            });
-            Logger.success(`Notification sent to ${notifyChannel.name}`);
-          }
-        } catch (error) {
-          Logger.warning('Could not send notification to notification channel');
-        }
-      }
-
+      // Reply to admin
       await interaction.editReply({
         content: `✅ **Tiket pendaftaran berhasil dibuka!**\n\n` +
           `📌 **Nama Sesi:** ${sessionName}\n` +
           `💰 **Biaya:** Rp ${fee.toLocaleString('id-ID')}\n` +
           `🆔 **Session ID:** \`${session.id}\`\n\n` +
-          `Member sekarang bisa mendaftar di channel ini!` +
-          (config.CHANNELS.REGISTRATION_NOTIFY ? `\n\n✅ Notifikasi otomatis telah dikirim!` : '')
+          `Member sekarang bisa mendaftar di channel ini!`
       });
+
+      // Delete reply after 5 seconds
+      setTimeout(async () => {
+        try {
+          await interaction.deleteReply();
+        } catch (error) {
+          Logger.debug('Could not delete reply');
+        }
+      }, 5000);
 
       Logger.success(`Registration opened: ${session.id} by ${interaction.user.tag}`);
 
     } catch (error) {
       Logger.error('Error opening registration ticket', error);
       
-      if (interaction.deferred) {
-        await interaction.editReply({
-          content: '❌ **Error:** Gagal membuka tiket pendaftaran!'
-        });
+      try {
+        if (interaction.deferred) {
+          await interaction.editReply({
+            content: '❌ **Error:** Gagal membuka tiket pendaftaran! Detail: ' + error.message
+          });
+        } else {
+          await interaction.reply({
+            content: '❌ **Error:** Gagal membuka tiket pendaftaran! Detail: ' + error.message,
+            flags: 64
+          });
+        }
+      } catch (replyError) {
+        Logger.error('Error sending error message', replyError);
       }
     }
   }
