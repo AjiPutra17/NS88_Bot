@@ -19,8 +19,10 @@ async function openSession(message, args) {
     return message.reply('❌ **Error:** SESSION_CHANNEL_ID belum dikonfigurasi di .env!');
   }
 
-  // Get session channel
-  const sessionChannel = await message.guild.channels.fetch(config.CHANNELS.SESSION).catch(() => null);
+  // Get session channel - use the channel where command was sent if SESSION_CHANNEL_ID not set
+  const sessionChannel = config.CHANNELS.SESSION 
+    ? await message.guild.channels.fetch(config.CHANNELS.SESSION).catch(() => null)
+    : message.channel;
   
   if (!sessionChannel) {
     return message.reply('❌ **Error:** Channel session tidak ditemukan!');
@@ -45,8 +47,9 @@ async function openSession(message, args) {
     .addComponents(
       new ButtonBuilder()
         .setCustomId(`register_session_${session.id}`)
-        .setLabel('📝 DAFTAR SEKARANG')
+        .setLabel('📝 BUKA TIKET PENDAFTARAN')
         .setStyle(ButtonStyle.Primary)
+        .setEmoji('📋')
     );
 
   // Send to session channel
@@ -58,8 +61,8 @@ async function openSession(message, args) {
   // Store message ID in session
   sessionManager.updateSession(session.id, { messageId: sentMessage.id });
 
-  // Reply to admin
-  await message.reply(
+  // Reply to admin (ephemeral-like, will auto-delete)
+  const replyMsg = await message.reply(
     `✅ **Sesi berhasil dibuka!**\n\n` +
     `📌 **Session ID:** ${session.id}\n` +
     `📍 **Channel:** ${sessionChannel}\n` +
@@ -69,6 +72,11 @@ async function openSession(message, args) {
 
   // Delete command message
   message.delete().catch(() => {});
+  
+  // Delete reply after 10 seconds
+  setTimeout(() => {
+    replyMsg.delete().catch(() => {});
+  }, 10000);
   
   Logger.success(`Session ${session.id} opened by ${message.author.tag}`);
 }

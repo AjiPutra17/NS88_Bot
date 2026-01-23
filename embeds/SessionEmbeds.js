@@ -11,25 +11,18 @@ class SessionEmbeds {
    */
   static createSessionEmbed(session) {
     return new EmbedBuilder()
-      .setColor(config.COLORS.PRIMARY)
-      .setTitle('🎯 BUKA SESI PENDAFTARAN!')
+      .setColor('#5865F2')
+      .setTitle('📋 Panel Pendaftaran')
       .setDescription(
-        `**${session.title}**\n\n` +
-        `${session.description}\n\n` +
-        `📋 **Informasi Sesi:**\n` +
-        `📅 **Tanggal:** ${session.date}\n` +
-        `⏰ **Waktu:** ${session.time}\n` +
-        `👥 **Kuota:** ${session.maxSlots} orang\n` +
-        `💰 **Biaya:** ${session.fee}\n\n` +
-        `━━━━━━━━━━━━━━━━━━━━━━━━━━━━\n\n` +
-        `**📝 Cara Daftar:**\n` +
-        `1️⃣ Klik tombol "📝 DAFTAR SEKARANG" dibawah\n` +
-        `2️⃣ Isi formulir pendaftaran\n` +
-        `3️⃣ Upload bukti pembayaran\n` +
-        `4️⃣ Tunggu konfirmasi dari admin\n\n` +
-        `⚡ **Buruan daftar sebelum kuota penuh!**`
+        '**Selamat datang di sistem pendaftaran!**\n\n' +
+        '📌 **Untuk Admin:**\n' +
+        'Klik tombol **"BUKA TIKET PENDAFTARAN"** di bawah untuk membuka sesi pendaftaran baru.\n\n' +
+        'Anda akan diminta mengisi:\n' +
+        '• Nama Sesi\n' +
+        '• Biaya Pendaftaran\n\n' +
+        '✨ **Channel ini akan menjadi tempat pendaftaran untuk semua member!**'
       )
-      .setFooter({ text: `${session.id} | ${config.BOT.NAME} 🤖` })
+      .setFooter({ text: `${config.BOT.NAME} 🤖 • ${new Date().toLocaleDateString('id-ID')}` })
       .setTimestamp();
   }
 

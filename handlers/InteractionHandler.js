@@ -30,6 +30,9 @@ class InteractionHandler {
     try {
       if (customId === 'create_ticket') {
         await this.showTicketModal(interaction);
+      } else if (customId === 'open_session_panel') {
+        const SessionHandler = require('./SessionHandler');
+        await SessionHandler.handleOpenSessionPanel(interaction);
       } else if (customId.startsWith('register_session_')) {
         const SessionHandler = require('./SessionHandler');
         await SessionHandler.handleRegisterButton(interaction);
@@ -327,6 +330,9 @@ class InteractionHandler {
   static async handleModalSubmit(interaction) {
     if (interaction.customId === 'ticket_form') {
       await this.handleTicketModalSubmit(interaction);
+    } else if (interaction.customId === 'create_session_form') {
+      const SessionHandler = require('./SessionHandler');
+      await SessionHandler.handleSessionCreationSubmit(interaction);
     } else if (interaction.customId.startsWith('registration_form_')) {
       const SessionHandler = require('./SessionHandler');
       await SessionHandler.handleRegistrationSubmit(interaction);

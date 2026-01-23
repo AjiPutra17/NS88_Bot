@@ -19,6 +19,180 @@ const { sessionManager } = require('../managers');
 
 class SessionHandler {
   /**
+   * Handle open session panel button (for admin)
+   */
+  static async handleOpenSessionPanel(interaction) {
+    // Check if user is admin
+    if (!interaction.member.permissions.has(PermissionFlagsBits.Administrator)) {
+      return interaction.reply({ 
+        content: '❌ **Error:** Hanya admin yang bisa membuka sesi pendaftaran!', 
+        flags: 64 
+      });
+    }
+
+    // Show session creation modal
+    await this.showSessionCreationModal(interaction);
+  }
+
+  /**
+   * Show session creation modal for admin
+   */
+  static async showSessionCreationModal(interaction) {
+    const modal = new ModalBuilder()
+      .setCustomId('create_session_form')
+      .setTitle('📝 Buat Sesi Pendaftaran Baru');
+
+    const inputs = [
+      { 
+        id: 'session_title', 
+        label: 'Nama Sesi', 
+        placeholder: 'Contoh: Sesi Belajar Discord Bot',
+        style: TextInputStyle.Short
+      },
+      { 
+        id: 'session_description', 
+        label: 'Deskripsi', 
+        placeholder: 'Contoh: Belajar membuat bot dari nol!',
+        style: TextInputStyle.Paragraph
+      },
+      { 
+        id: 'session_date', 
+        label: 'Tanggal & Waktu', 
+        placeholder: 'Contoh: 25 Januari 2026, 19:00 WIB',
+        style: TextInputStyle.Short
+      },
+      { 
+        id: 'session_quota', 
+        label: 'Kuota Peserta', 
+        placeholder: 'Contoh: 10',
+        style: TextInputStyle.Short
+      },
+      { 
+        id: 'session_fee', 
+        label: 'Biaya Pendaftaran', 
+        placeholder: 'Contoh: Rp 50.000 atau GRATIS',
+        style: TextInputStyle.Short
+      }
+    ];
+
+    const rows = inputs.map(input => {
+      const textInput = new TextInputBuilder()
+        .setCustomId(input.id)
+        .setLabel(input.label)
+        .setStyle(input.style)
+        .setPlaceholder(input.placeholder)
+        .setRequired(true);
+      return new ActionRowBuilder().addComponents(textInput);
+    });
+
+    modal.addComponents(...rows);
+    await interaction.showModal(modal);
+    Logger.info(`Session creation modal shown to admin ${interaction.user.tag}`);
+  }
+
+  /**
+   * Handle session creation form submit
+   */
+  static async handleSessionCreationSubmit(interaction) {
+    try {
+      await interaction.deferReply({ flags: 64 });
+
+      const title = interaction.fields.getTextInputValue('session_title');
+      const description = interaction.fields.getTextInputValue('session_description');
+      const datetime = interaction.fields.getTextInputValue('session_date');
+      const quota = parseInt(interaction.fields.getTextInputValue('session_quota'));
+      const fee = interaction.fields.getTextInputValue('session_fee');
+
+      // Validate quota
+      if (isNaN(quota) || quota < 1) {
+        return interaction.editReply({ 
+          content: '❌ **Error:** Kuota tidak valid! Minimal 1 orang.' 
+        });
+      }
+
+      // Create session
+      const session = sessionManager.createSession({
+        title,
+        description,
+        date: datetime.split(',')[0]?.trim() || datetime,
+        time: datetime.split(',')[1]?.trim() || '-',
+        maxSlots: quota,
+        fee,
+        creatorId: interaction.user.id
+      });
+
+      // Create announcement embed
+      const announceEmbed = this.createSessionAnnounceEmbed(session);
+      const registerButton = new ActionRowBuilder()
+        .addComponents(
+          new ButtonBuilder()
+            .setCustomId(`register_session_${session.id}`)
+            .setLabel('📝 DAFTAR SEKARANG')
+            .setStyle(ButtonStyle.Success)
+            .setEmoji('✅')
+        );
+
+      // Send to channel
+      const sentMessage = await interaction.channel.send({ 
+        embeds: [announceEmbed], 
+        components: [registerButton] 
+      });
+
+      // Store message ID
+      sessionManager.updateSession(session.id, { messageId: sentMessage.id });
+
+      // Reply to admin
+      await interaction.editReply({ 
+        content: `✅ **Sesi pendaftaran berhasil dibuat!**\n\n` +
+                 `📌 **Session ID:** ${session.id}\n` +
+                 `📋 **Judul:** ${title}\n` +
+                 `👥 **Kuota:** ${quota} orang\n\n` +
+                 `Member sekarang bisa mendaftar!`
+      });
+
+      Logger.success(`Session ${session.id} created by ${interaction.user.tag}`);
+
+    } catch (error) {
+      Logger.error('Error handling session creation', error);
+      
+      if (interaction.deferred) {
+        await interaction.editReply({ 
+          content: `❌ **Error:** ${error.message || 'Terjadi kesalahan saat membuat sesi.'}` 
+        });
+      }
+    }
+  }
+
+  /**
+   * Create session announcement embed (for members)
+   */
+  static createSessionAnnounceEmbed(session) {
+    const EmbedBuilder = require('discord.js').EmbedBuilder;
+    
+    return new EmbedBuilder()
+      .setColor('#00FF00')
+      .setTitle('🎯 PENDAFTARAN DIBUKA!')
+      .setDescription(
+        `**${session.title}**\n\n` +
+        `${session.description}\n\n` +
+        `━━━━━━━━━━━━━━━━━━━━━━━━━━━━\n\n` +
+        `📋 **Informasi Sesi:**\n` +
+        `📅 **Waktu:** ${session.date}${session.time !== '-' ? ', ' + session.time : ''}\n` +
+        `👥 **Kuota:** ${session.maxSlots} orang\n` +
+        `💰 **Biaya:** ${session.fee}\n\n` +
+        `━━━━━━━━━━━━━━━━━━━━━━━━━━━━\n\n` +
+        `**📝 Cara Daftar:**\n` +
+        `1️⃣ Klik tombol "DAFTAR SEKARANG" di bawah\n` +
+        `2️⃣ Isi formulir pendaftaran\n` +
+        `3️⃣ Upload bukti pembayaran\n` +
+        `4️⃣ Tunggu konfirmasi admin\n\n` +
+        `⚡ **Buruan daftar sebelum penuh!**`
+      )
+      .setFooter({ text: `${session.id} | ${config.BOT.NAME} 🤖` })
+      .setTimestamp();
+  }
+
+  /**
    * Handle register session button
    */
   static async handleRegisterButton(interaction) {
