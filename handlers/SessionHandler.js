@@ -42,50 +42,16 @@ class SessionHandler {
       .setCustomId('create_session_form')
       .setTitle('📝 Buat Sesi Pendaftaran Baru');
 
-    const inputs = [
-      { 
-        id: 'session_title', 
-        label: 'Nama Sesi', 
-        placeholder: 'Contoh: Sesi Belajar Discord Bot',
-        style: TextInputStyle.Short
-      },
-      { 
-        id: 'session_description', 
-        label: 'Deskripsi', 
-        placeholder: 'Contoh: Belajar membuat bot dari nol!',
-        style: TextInputStyle.Paragraph
-      },
-      { 
-        id: 'session_date', 
-        label: 'Tanggal & Waktu', 
-        placeholder: 'Contoh: 25 Januari 2026, 19:00 WIB',
-        style: TextInputStyle.Short
-      },
-      { 
-        id: 'session_quota', 
-        label: 'Kuota Peserta', 
-        placeholder: 'Contoh: 10',
-        style: TextInputStyle.Short
-      },
-      { 
-        id: 'session_fee', 
-        label: 'Biaya Pendaftaran', 
-        placeholder: 'Contoh: Rp 50.000 atau GRATIS',
-        style: TextInputStyle.Short
-      }
-    ];
+    const sessionNameInput = new TextInputBuilder()
+      .setCustomId('session_name')
+      .setLabel('Nama Sesi')
+      .setStyle(TextInputStyle.Short)
+      .setPlaceholder('Contoh: Sesi Belajar Discord Bot')
+      .setRequired(true);
 
-    const rows = inputs.map(input => {
-      const textInput = new TextInputBuilder()
-        .setCustomId(input.id)
-        .setLabel(input.label)
-        .setStyle(input.style)
-        .setPlaceholder(input.placeholder)
-        .setRequired(true);
-      return new ActionRowBuilder().addComponents(textInput);
-    });
+    const row = new ActionRowBuilder().addComponents(sessionNameInput);
 
-    modal.addComponents(...rows);
+    modal.addComponents(row);
     await interaction.showModal(modal);
     Logger.info(`Session creation modal shown to admin ${interaction.user.tag}`);
   }
@@ -97,21 +63,10 @@ class SessionHandler {
     try {
       await interaction.deferReply({ flags: 64 });
 
-      const title = interaction.fields.getTextInputValue('session_title');
-      const description = interaction.fields.getTextInputValue('session_description');
-      const datetime = interaction.fields.getTextInputValue('session_date');
-      const quota = parseInt(interaction.fields.getTextInputValue('session_quota'));
-      const fee = interaction.fields.getTextInputValue('session_fee');
-
-      // Validate quota
-      if (isNaN(quota) || quota < 1) {
-        return interaction.editReply({ 
-          content: '❌ **Error:** Kuota tidak valid! Minimal 1 orang.' 
-        });
-      }
+      const sessionName = interaction.fields.getTextInputValue('session_name');
 
       // Create public channel for this session
-      const sessionChannel = await this.createSessionChannel(interaction, title);
+      const sessionChannel = await this.createSessionChannel(interaction, sessionName);
 
       if (!sessionChannel) {
         return interaction.editReply({ 
@@ -119,14 +74,14 @@ class SessionHandler {
         });
       }
 
-      // Create session
+      // Create session with default values
       const session = sessionManager.createSession({
-        title,
-        description,
-        date: datetime.split(',')[0]?.trim() || datetime,
-        time: datetime.split(',')[1]?.trim() || '-',
-        maxSlots: quota,
-        fee,
+        title: sessionName,
+        description: 'Silakan daftar sekarang!',
+        date: new Date().toLocaleDateString('id-ID'),
+        time: '-',
+        maxSlots: 999, // Unlimited by default
+        fee: '-',
         creatorId: interaction.user.id,
         channelId: sessionChannel.id
       });
@@ -162,9 +117,8 @@ class SessionHandler {
       await interaction.editReply({ 
         content: `✅ **Sesi pendaftaran berhasil dibuat!**\n\n` +
                  `📌 **Session ID:** ${session.id}\n` +
-                 `📋 **Judul:** ${title}\n` +
-                 `📍 **Channel:** ${sessionChannel}\n` +
-                 `👥 **Kuota:** ${quota} orang\n\n` +
+                 `📋 **Nama Sesi:** ${sessionName}\n` +
+                 `📍 **Channel:** ${sessionChannel}\n\n` +
                  `Member sekarang bisa mendaftar di channel tersebut!`
       });
 
@@ -246,17 +200,12 @@ class SessionHandler {
         `**${session.title}**\n\n` +
         `${session.description}\n\n` +
         `━━━━━━━━━━━━━━━━━━━━━━━━━━━━\n\n` +
-        `📋 **Informasi Sesi:**\n` +
-        `📅 **Waktu:** ${session.date}${session.time !== '-' ? ', ' + session.time : ''}\n` +
-        `👥 **Kuota:** ${session.maxSlots} orang\n` +
-        `💰 **Biaya:** ${session.fee}\n\n` +
-        `━━━━━━━━━━━━━━━━━━━━━━━━━━━━\n\n` +
         `**📝 Cara Daftar:**\n` +
-        `1️⃣ Klik tombol "DAFTAR SEKARANG" di bawah\n` +
+        `1️⃣ Klik tombol **"DAFTAR SEKARANG"** di bawah\n` +
         `2️⃣ Isi formulir pendaftaran\n` +
-        `3️⃣ Upload bukti pembayaran\n` +
-        `4️⃣ Tunggu konfirmasi admin\n\n` +
-        `⚡ **Buruan daftar sebelum penuh!**`
+        `3️⃣ Upload bukti pembayaran di channel pribadi\n` +
+        `4️⃣ Tunggu konfirmasi dari admin\n\n` +
+        `⚡ **Segera daftar sekarang!**`
       )
       .setFooter({ text: `${session.id} | ${config.BOT.NAME} 🤖` })
       .setTimestamp();
@@ -777,13 +726,12 @@ class SessionHandler {
         `**${session.title}**\n\n` +
         `${session.description}\n\n` +
         `━━━━━━━━━━━━━━━━━━━━━━━━━━━━\n\n` +
-        `📋 **Informasi Sesi:**\n` +
-        `📅 **Waktu:** ${session.date}${session.time !== '-' ? ', ' + session.time : ''}\n` +
-        `👥 **Peserta Terdaftar:** ${confirmedCount}/${session.maxSlots}\n` +
-        `💰 **Biaya:** ${session.fee}\n\n` +
+        `📋 **Informasi:**\n` +
+        `👥 **Peserta Terdaftar:** ${confirmedCount} orang\n` +
+        `📅 **Ditutup pada:** ${new Date().toLocaleString('id-ID')}\n\n` +
         `━━━━━━━━━━━━━━━━━━━━━━━━━━━━\n\n` +
         `🔒 **Pendaftaran telah ditutup.**\n` +
-        `📅 **Ditutup pada:** ${new Date().toLocaleString('id-ID')}`
+        `Terima kasih atas partisipasinya!`
       )
       .setFooter({ text: `${session.id} | ${config.BOT.NAME} 🤖` })
       .setTimestamp();
