@@ -4,18 +4,18 @@
 
 const TicketManager = require('./TicketManager');
 const SlowmodeManager = require('./SlowmodeManager');
-const RegistrationManager = require('./RegistrationManager');
+const SessionManager = require('./SessionManager');
 
 // Initialize managers
 const ticketManager = new TicketManager();
 const slowmodeManager = new SlowmodeManager();
-const registrationManager = new RegistrationManager();
+const sessionManager = new SessionManager();
 
 module.exports = {
   TicketManager,
   SlowmodeManager,
-  RegistrationManager,
+  SessionManager,
   ticketManager,
   slowmodeManager,
-  registrationManager
+  sessionManager
 };

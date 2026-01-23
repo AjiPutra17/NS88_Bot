@@ -7,7 +7,8 @@ const {
   CommandHandler,
   SlowmodeHandler,
   WarningHandler,
-  PaymentProofHandler
+  PaymentProofHandler,
+  SessionHandler
 } = require('../handlers');
 
 async function messageCreate(message) {
@@ -23,8 +24,11 @@ async function messageCreate(message) {
     const warningHandled = await WarningHandler.handle(message);
     if (warningHandled) return;
 
-    // Payment proof detection
+    // Payment proof detection for tickets
     await PaymentProofHandler.handle(message);
+
+    // Payment proof detection for session registration
+    await SessionHandler.handlePaymentProof(message);
 
     // Command handling
     await CommandHandler.handle(message);

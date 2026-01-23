@@ -20,7 +20,8 @@ const CONFIG = {
     ARCHIVE: process.env.ARCHIVE_CHANNEL_ID || null,
     TICKET: process.env.TICKET_CHANNEL || null,
     WARNING: (process.env.WARNING_CHANNEL_IDS || '').split(',').filter(Boolean),
-    REGISTRATION_NOTIFY: process.env.REGISTRATION_NOTIFY_CHANNEL_ID || null // Channel untuk auto notification
+    SESSION: process.env.SESSION_CHANNEL_ID || null, // Channel for session registration
+    SESSION_LIST: process.env.SESSION_LIST_CHANNEL_ID || null // Channel for confirmed list
   },
 
   // Admin Settings
@@ -29,22 +30,22 @@ const CONFIG = {
     ROLE_NAME: process.env.ADMIN_ROLE_NAME || 'Admin'
   },
 
- // Donatur/Booster Settings
-DONATUR: {
-  ROLE_NAME: process.env.DONATUR_ROLE_NAME || 'Donatur NS88',
-  SLOWMODE_MINUTES: parseInt(process.env.SLOWMODE_DONATUR_MINUTES) || 10,
-  SLOWMODE_SECONDS() {
-    return this.SLOWMODE_MINUTES * 60;
-  }
-},
+  // Donatur/Booster Settings
+  DONATUR: {
+    ROLE_NAME: process.env.DONATUR_ROLE_NAME || 'Donatur NS88',
+    SLOWMODE_MINUTES: parseInt(process.env.SLOWMODE_DONATUR_MINUTES) || 10,
+    SLOWMODE_SECONDS() {
+      return this.SLOWMODE_MINUTES * 60;
+    }
+  },
 
-// Non-Donatur Settings
-NON_DONATUR: {
-  SLOWMODE_MINUTES: parseInt(process.env.SLOWMODE_NON_DONATUR_MINUTES) || 30,
-  SLOWMODE_SECONDS() {
-    return this.SLOWMODE_MINUTES * 60;
-  }
-},
+  // Non-Donatur Settings
+  NON_DONATUR: {
+    SLOWMODE_MINUTES: parseInt(process.env.SLOWMODE_NON_DONATUR_MINUTES) || 30,
+    SLOWMODE_SECONDS() {
+      return this.SLOWMODE_MINUTES * 60;
+    }
+  },
 
   // Payment Information
   PAYMENT: {
@@ -59,6 +60,13 @@ NON_DONATUR: {
     MIN_NOMINAL: 1000,
     PREFIX: 'TICKET',
     CHANNEL_PREFIX: 'ticket-'
+  },
+
+    // Session Settings
+  SESSION: {
+    PREFIX: 'SESSION',
+    PAYMENT_CHANNEL_PREFIX: 'payment-',
+    DELETE_DELAY_MS: 5000
   },
 
   // Colors (Hex)

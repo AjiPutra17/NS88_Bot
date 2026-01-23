@@ -19,7 +19,6 @@ const Utils = require('../utils');
 const Logger = require('../utils/logger');
 const { ticketManager } = require('../managers');
 const TicketOperations = require('./TicketOperations');
-const RegistrationHandler = require('./RegistrationHandler');
 
 class InteractionHandler {
   /**
@@ -29,9 +28,17 @@ class InteractionHandler {
     const { customId } = interaction;
 
     try {
-      // Ticket buttons
       if (customId === 'create_ticket') {
         await this.showTicketModal(interaction);
+      } else if (customId.startsWith('register_session_')) {
+        const SessionHandler = require('./SessionHandler');
+        await SessionHandler.handleRegisterButton(interaction);
+      } else if (customId.startsWith('confirm_registration_')) {
+        const SessionHandler = require('./SessionHandler');
+        await SessionHandler.handleConfirmRegistration(interaction);
+      } else if (customId.startsWith('reject_registration_')) {
+        const SessionHandler = require('./SessionHandler');
+        await SessionHandler.handleRejectRegistration(interaction);
       } else if (customId.startsWith('add_buyer_')) {
         await this.showBuyerSelect(interaction);
       } else if (customId.startsWith('add_seller_')) {
@@ -40,23 +47,6 @@ class InteractionHandler {
         await this.completeTicket(interaction);
       } else if (customId.startsWith('cancel_')) {
         await this.cancelTicket(interaction);
-      }
-      // Registration buttons
-      else if (customId === 'open_registration_ticket') {
-        await RegistrationHandler.showOpenTicketModal(interaction);
-      } else if (customId.startsWith('register_')) {
-        const sessionId = customId.split('_')[1];
-        await RegistrationHandler.showRegistrationForm(interaction, sessionId);
-      } else if (customId.startsWith('confirm_payment_')) {
-        const parts = customId.split('_');
-        const sessionId = parts[2];
-        const userId = parts[3];
-        await RegistrationHandler.handlePaymentConfirmation(interaction, sessionId, userId);
-      } else if (customId.startsWith('cancel_registration_')) {
-        const parts = customId.split('_');
-        const sessionId = parts[2];
-        const userId = parts[3];
-        await RegistrationHandler.handleCancelRegistration(interaction, sessionId, userId);
       }
     } catch (error) {
       Logger.error('Error handling button interaction', error);
@@ -238,29 +228,21 @@ class InteractionHandler {
   }
 
   /**
-   * Handle user select menu and string select menu
+   * Handle user select menu
    */
   static async handleUserSelect(interaction) {
     const { customId, values } = interaction;
 
     try {
-      // User select menu for tickets
       if (customId.startsWith('select_buyer_')) {
         await this.addBuyer(interaction, values[0]);
       } else if (customId.startsWith('select_seller_')) {
         await this.addSeller(interaction, values[0]);
       }
-      // String select menu for kenalan
-      else if (customId.startsWith('select_kenalan_')) {
-        const parts = customId.split('_');
-        const sessionId = parts[2];
-        const userId = parts[3];
-        await RegistrationHandler.handleKenalanSelect(interaction, sessionId, userId);
-      }
     } catch (error) {
-      Logger.error('Error handling select menu', error);
+      Logger.error('Error handling user select', error);
       await interaction.update({
-        content: '❌ **Error:** Terjadi kesalahan!',
+        content: '❌ **Error:** Terjadi kesalahan saat menambahkan user!',
         components: []
       });
     }
@@ -342,43 +324,17 @@ class InteractionHandler {
     }
   }
 
-  /**
-   * Handle modal submit
-   */
   static async handleModalSubmit(interaction) {
-    try {
-      if (interaction.customId === 'ticket_form') {
-        return this.handleTicketModalSubmit(interaction);
-      } else if (interaction.customId === 'open_ticket_modal') {
-        return RegistrationHandler.handleOpenTicketSubmit(interaction);
-      } else if (interaction.customId.startsWith('registration_final_')) {
-        const parts = interaction.customId.split('_');
-        const sessionId = parts[2];
-        const kenalanId = parts[3];
-        return RegistrationHandler.handleFinalRegistration(interaction, sessionId, kenalanId);
-      }
-    } catch (error) {
-      Logger.error('Error in handleModalSubmit', error);
-      
-      try {
-        if (interaction.deferred) {
-          await interaction.editReply({
-            content: '❌ **Error:** Terjadi kesalahan saat memproses form!\n```' + error.message + '```'
-          });
-        } else if (!interaction.replied) {
-          await interaction.reply({
-            content: '❌ **Error:** Terjadi kesalahan saat memproses form!\n```' + error.message + '```',
-            flags: 64
-          });
-        }
-      } catch (replyError) {
-        Logger.error('Error sending error reply', replyError);
-      }
+    if (interaction.customId === 'ticket_form') {
+      await this.handleTicketModalSubmit(interaction);
+    } else if (interaction.customId.startsWith('registration_form_')) {
+      const SessionHandler = require('./SessionHandler');
+      await SessionHandler.handleRegistrationSubmit(interaction);
     }
   }
 
   /**
-   * Handle ticket modal submit (renamed from handleModalSubmit)
+   * Handle ticket modal submit
    */
   static async handleTicketModalSubmit(interaction) {
 

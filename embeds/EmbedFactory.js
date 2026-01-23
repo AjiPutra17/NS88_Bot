@@ -137,9 +137,10 @@ class EmbedFactory {
                  `Menampilkan panel untuk membuat ticket rekber/MC`,
           inline: false
         },
-        {
-          name: '📋 REGISTRATION SYSTEM',
-          value: `\`${config.BOT.PREFIX}setup-registration\` - Setup panel pendaftaran (Admin)`,
+        { 
+          name: '🎯 SESSION SYSTEM', 
+          value: `\`${config.BOT.PREFIX}open-session\` - Buka sesi pendaftaran (Admin)\n` +
+                 `\`${config.BOT.PREFIX}close-session <sessionId>\` - Tutup sesi (Admin)`,
           inline: false
         },
         { 

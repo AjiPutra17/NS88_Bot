@@ -4,10 +4,12 @@
 
 const setupTicket = require('./setup-ticket');
 const help = require('./help');
-const { setupRegistration } = require('./registration');
+const openSession = require('./open-session');
+const closeSession = require('./close-session');
 
 module.exports = {
   'setup-ticket': setupTicket,
   'help': help,
-  'setup-registration': setupRegistration
+  'open-session': openSession,
+  'close-session': closeSession
 };
