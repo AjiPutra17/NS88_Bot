@@ -14,12 +14,16 @@ class SessionManager {
   /**
    * Create new session
    */
+  /**
+   * Create new session
+   */
   createSession(data) {
     const id = `SESSION-${this.counter++}`;
     const session = {
       id,
       ...data,
       status: 'open', // open, closed
+      channelId: data.channelId || null,
       createdAt: new Date(),
       updatedAt: new Date()
     };

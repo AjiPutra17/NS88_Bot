@@ -110,6 +110,15 @@ class SessionHandler {
         });
       }
 
+      // Create public channel for this session
+      const sessionChannel = await this.createSessionChannel(interaction, title);
+
+      if (!sessionChannel) {
+        return interaction.editReply({ 
+          content: '❌ **Error:** Gagal membuat channel sesi. Pastikan bot punya permission "Manage Channels".' 
+        });
+      }
+
       // Create session
       const session = sessionManager.createSession({
         title,
@@ -118,24 +127,32 @@ class SessionHandler {
         time: datetime.split(',')[1]?.trim() || '-',
         maxSlots: quota,
         fee,
-        creatorId: interaction.user.id
+        creatorId: interaction.user.id,
+        channelId: sessionChannel.id
       });
 
       // Create announcement embed
       const announceEmbed = this.createSessionAnnounceEmbed(session);
-      const registerButton = new ActionRowBuilder()
+      
+      // Create buttons (register + close)
+      const buttons = new ActionRowBuilder()
         .addComponents(
           new ButtonBuilder()
             .setCustomId(`register_session_${session.id}`)
             .setLabel('📝 DAFTAR SEKARANG')
             .setStyle(ButtonStyle.Success)
-            .setEmoji('✅')
+            .setEmoji('✅'),
+          new ButtonBuilder()
+            .setCustomId(`close_session_${session.id}`)
+            .setLabel('🔒 TUTUP SESI')
+            .setStyle(ButtonStyle.Danger)
+            .setEmoji('❌')
         );
 
-      // Send to channel
-      const sentMessage = await interaction.channel.send({ 
+      // Send to new session channel
+      const sentMessage = await sessionChannel.send({ 
         embeds: [announceEmbed], 
-        components: [registerButton] 
+        components: [buttons] 
       });
 
       // Store message ID
@@ -146,11 +163,12 @@ class SessionHandler {
         content: `✅ **Sesi pendaftaran berhasil dibuat!**\n\n` +
                  `📌 **Session ID:** ${session.id}\n` +
                  `📋 **Judul:** ${title}\n` +
+                 `📍 **Channel:** ${sessionChannel}\n` +
                  `👥 **Kuota:** ${quota} orang\n\n` +
-                 `Member sekarang bisa mendaftar!`
+                 `Member sekarang bisa mendaftar di channel tersebut!`
       });
 
-      Logger.success(`Session ${session.id} created by ${interaction.user.tag}`);
+      Logger.success(`Session ${session.id} created by ${interaction.user.tag} in channel ${sessionChannel.name}`);
 
     } catch (error) {
       Logger.error('Error handling session creation', error);
@@ -160,6 +178,58 @@ class SessionHandler {
           content: `❌ **Error:** ${error.message || 'Terjadi kesalahan saat membuat sesi.'}` 
         });
       }
+    }
+  }
+
+  /**
+   * Create public session channel
+   */
+  static async createSessionChannel(interaction, sessionTitle) {
+    try {
+      const client = interaction.client;
+      
+      // Clean title for channel name
+      const cleanTitle = sessionTitle
+        .toLowerCase()
+        .replace(/[^a-z0-9\s]/g, '')
+        .replace(/\s+/g, '-')
+        .substring(0, 50);
+      
+      const sessionChannel = await interaction.guild.channels.create({
+        name: `📋-${cleanTitle}`,
+        type: ChannelType.GuildText,
+        parent: interaction.channel.parentId,
+        topic: `Pendaftaran: ${sessionTitle}`,
+        permissionOverwrites: [
+          {
+            id: interaction.guild.id,
+            allow: [
+              PermissionFlagsBits.ViewChannel,
+              PermissionFlagsBits.ReadMessageHistory
+            ],
+            deny: [
+              PermissionFlagsBits.SendMessages // Only bot & admin can send
+            ]
+          },
+          {
+            id: client.user.id,
+            allow: [
+              PermissionFlagsBits.ViewChannel,
+              PermissionFlagsBits.SendMessages,
+              PermissionFlagsBits.EmbedLinks,
+              PermissionFlagsBits.ManageMessages,
+              PermissionFlagsBits.ManageChannels
+            ],
+          },
+        ],
+      });
+
+      Logger.success(`Session channel created: ${sessionChannel.name}`);
+      return sessionChannel;
+      
+    } catch (error) {
+      Logger.error('Error creating session channel', error);
+      return null;
     }
   }
 
@@ -619,6 +689,104 @@ class SessionHandler {
     }
 
     Logger.warning(`Registration ${registrationId} rejected by ${interaction.user.tag}`);
+  }
+
+  /**
+   * Handle close session button
+   */
+  static async handleCloseSession(interaction) {
+    if (!interaction.member.permissions.has(PermissionFlagsBits.Administrator)) {
+      return interaction.reply({ 
+        content: '❌ **Error:** Hanya Admin yang bisa menutup sesi!', 
+        flags: 64
+      });
+    }
+
+    const sessionId = interaction.customId.split('_')[2];
+    const session = sessionManager.getSession(sessionId);
+
+    if (!session) {
+      return interaction.reply({ 
+        content: '❌ **Error:** Session tidak ditemukan!', 
+        flags: 64 
+      });
+    }
+
+    if (session.status === 'closed') {
+      return interaction.reply({ 
+        content: '❌ **Error:** Session sudah ditutup!', 
+        flags: 64 
+      });
+    }
+
+    // Close session
+    sessionManager.closeSession(sessionId);
+
+    // Get confirmed count
+    const confirmedCount = sessionManager.getConfirmedCount(sessionId);
+
+    // Update message - remove buttons
+    const closedEmbed = this.createClosedSessionEmbed(session, confirmedCount);
+    
+    await interaction.message.edit({ 
+      embeds: [closedEmbed], 
+      components: [] 
+    });
+
+    await interaction.reply({ 
+      content: `✅ **Sesi berhasil ditutup!**\n\n` +
+               `📌 **Session:** ${session.title}\n` +
+               `👥 **Total Peserta:** ${confirmedCount}/${session.maxSlots}\n` +
+               `🔒 **Ditutup oleh:** ${interaction.user.tag}`,
+      flags: 64
+    });
+
+    // Delete session channel after delay
+    const sessionChannel = await interaction.guild.channels.fetch(session.channelId);
+    if (sessionChannel) {
+      await sessionChannel.send(
+        `🔒 **SESI DITUTUP**\n\n` +
+        `Pendaftaran untuk sesi **${session.title}** telah ditutup.\n` +
+        `👥 **Total Peserta Terdaftar:** ${confirmedCount}/${session.maxSlots}\n\n` +
+        `⏳ Channel ini akan dihapus dalam ${config.SESSION.DELETE_DELAY_MS / 1000} detik...`
+      );
+      
+      setTimeout(async () => {
+        try {
+          await sessionChannel.delete();
+          Logger.success(`Session channel ${sessionChannel.name} deleted`);
+        } catch (error) {
+          Logger.error('Failed to delete session channel', error);
+        }
+      }, config.SESSION.DELETE_DELAY_MS);
+    }
+
+    Logger.success(`Session ${sessionId} closed by ${interaction.user.tag}`);
+  }
+
+  /**
+   * Create closed session embed
+   */
+  static createClosedSessionEmbed(session, confirmedCount) {
+    const EmbedBuilder = require('discord.js').EmbedBuilder;
+    
+    return new EmbedBuilder()
+      .setColor('#FF0000')
+      .setTitle('🔒 SESI DITUTUP')
+      .setDescription(
+        `**${session.title}**\n\n` +
+        `${session.description}\n\n` +
+        `━━━━━━━━━━━━━━━━━━━━━━━━━━━━\n\n` +
+        `📋 **Informasi Sesi:**\n` +
+        `📅 **Waktu:** ${session.date}${session.time !== '-' ? ', ' + session.time : ''}\n` +
+        `👥 **Peserta Terdaftar:** ${confirmedCount}/${session.maxSlots}\n` +
+        `💰 **Biaya:** ${session.fee}\n\n` +
+        `━━━━━━━━━━━━━━━━━━━━━━━━━━━━\n\n` +
+        `🔒 **Pendaftaran telah ditutup.**\n` +
+        `📅 **Ditutup pada:** ${new Date().toLocaleString('id-ID')}`
+      )
+      .setFooter({ text: `${session.id} | ${config.BOT.NAME} 🤖` })
+      .setTimestamp();
   }
 }
 

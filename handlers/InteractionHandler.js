@@ -36,6 +36,9 @@ class InteractionHandler {
       } else if (customId.startsWith('register_session_')) {
         const SessionHandler = require('./SessionHandler');
         await SessionHandler.handleRegisterButton(interaction);
+      } else if (customId.startsWith('close_session_')) {
+        const SessionHandler = require('./SessionHandler');
+        await SessionHandler.handleCloseSession(interaction);
       } else if (customId.startsWith('confirm_registration_')) {
         const SessionHandler = require('./SessionHandler');
         await SessionHandler.handleConfirmRegistration(interaction);
