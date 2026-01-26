@@ -234,60 +234,37 @@ class SessionHandler {
 
     // Check if quota is full
     const confirmedCount = sessionManager.getConfirmedCount(sessionId);
-    if (confirmedCount >= session.maxSlots) {
+    if (session.maxSlots !== 999 && confirmedCount >= session.maxSlots) {
       return interaction.reply({ 
         content: '❌ **Error:** Kuota sudah penuh!', 
         flags: 64 
       });
     }
 
-    // Show registration modal
-    await this.showRegistrationModal(interaction, session);
+    // Show username modal directly
+    await this.showUsernameModal(interaction, session);
   }
 
   /**
-   * Show registration modal
+   * Show username modal
    */
-  static async showRegistrationModal(interaction, session) {
+  static async showUsernameModal(interaction, session) {
     const modal = new ModalBuilder()
-      .setCustomId(`registration_form_${session.id}`)
+      .setCustomId(`username_form_${session.id}`)
       .setTitle('📝 Formulir Pendaftaran');
 
-    const inputs = [
-      { 
-        id: 'name', 
-        label: 'Nama Lengkap', 
-        placeholder: 'Contoh: John Doe',
-        style: TextInputStyle.Short
-      },
-      { 
-        id: 'contact', 
-        label: 'Kontak (WhatsApp/Telegram)', 
-        placeholder: 'Contoh: 08123456789 atau @username',
-        style: TextInputStyle.Short
-      },
-      { 
-        id: 'notes', 
-        label: 'Catatan (Opsional)', 
-        placeholder: 'Ada pertanyaan atau request khusus?',
-        style: TextInputStyle.Paragraph,
-        required: false
-      }
-    ];
+    const usernameInput = new TextInputBuilder()
+      .setCustomId('username')
+      .setLabel('Username')
+      .setStyle(TextInputStyle.Short)
+      .setPlaceholder('Contoh: John Doe')
+      .setRequired(true);
 
-    const rows = inputs.map(input => {
-      const textInput = new TextInputBuilder()
-        .setCustomId(input.id)
-        .setLabel(input.label)
-        .setStyle(input.style)
-        .setPlaceholder(input.placeholder)
-        .setRequired(input.required !== false);
-      return new ActionRowBuilder().addComponents(textInput);
-    });
+    const row = new ActionRowBuilder().addComponents(usernameInput);
 
-    modal.addComponents(...rows);
+    modal.addComponents(row);
     await interaction.showModal(modal);
-    Logger.info(`Registration modal shown to ${interaction.user.tag} for ${session.id}`);
+    Logger.info(`Username modal shown to ${interaction.user.tag} for ${session.id}`);
   }
 
   /**
@@ -307,44 +284,41 @@ class SessionHandler {
     try {
       await interaction.deferReply({ flags: 64 });
 
-      const name = interaction.fields.getTextInputValue('name');
-      const contact = interaction.fields.getTextInputValue('contact');
-      const notes = interaction.fields.getTextInputValue('notes') || '';
+      const username = interaction.fields.getTextInputValue('username');
 
-      // Create payment channel for this registration
-      const paymentChannel = await this.createPaymentChannel(interaction, session, name);
+      // Get role from temp data
+      const tempData = interaction.client.tempRegistrationData?.get(interaction.user.id);
+      const role = tempData?.role || 'akamsi';
 
-      if (!paymentChannel) {
-        return interaction.editReply({ 
-          content: '❌ **Error:** Gagal membuat channel pembayaran. Pastikan bot punya permission "Manage Channels".' 
-        });
+      // Clear temp data
+      if (interaction.client.tempRegistrationData) {
+        interaction.client.tempRegistrationData.delete(interaction.user.id);
       }
 
-      // Create registration
+      // Get role name
+      const roleName = role === 'akamsi' ? 'Akamsi NS88' : 'Unknown';
+
+      // Create registration directly to admin (no payment channel)
       const registration = sessionManager.addRegistration(sessionId, {
         userId: interaction.user.id,
-        name,
-        contact,
-        notes,
-        channelId: paymentChannel.id
+        username: username,
+        role: roleName,
+        contact: interaction.user.tag,
+        notes: `Role: ${roleName}`,
+        channelId: null // No payment channel needed
       });
 
-      // Send registration embed to payment channel
-      const registrationEmbed = SessionEmbeds.createRegistrationEmbed(registration, session);
-      const confirmButtons = this.createConfirmButtons(registration.id);
-
-      await paymentChannel.send({ embeds: [registrationEmbed], components: [confirmButtons] });
-      await paymentChannel.send(
-        `${interaction.user}\n\n` +
-        `📸 **Silakan upload bukti pembayaran di sini:**\n` +
-        `• Screenshot transfer\n` +
-        `• Foto bukti pembayaran\n\n` +
-        `⏳ Setelah upload, tunggu konfirmasi dari admin.`
-      );
+      // Send notification to admin (crzdrn)
+      await this.notifyAdminPayment(interaction, registration, session);
 
       // Reply to user
       await interaction.editReply({ 
-        content: `✅ **Pendaftaran berhasil!**\n📍 Silakan cek channel ${paymentChannel} untuk upload bukti pembayaran.` 
+        content: `✅ **Pendaftaran berhasil!**\n\n` +
+                 `📋 **Username:** ${username}\n` +
+                 `👤 **Role:** ${roleName}\n` +
+                 `💰 **Biaya:** Rp 20.000\n\n` +
+                 `📸 **Silakan upload bukti pembayaran ke admin.**\n` +
+                 `Admin akan menghubungi Anda untuk konfirmasi.`
       });
 
       Logger.success(`Registration ${registration.id} created for ${interaction.user.tag}`);
@@ -357,6 +331,80 @@ class SessionHandler {
           content: `❌ **Error:** ${error.message || 'Terjadi kesalahan saat mendaftar.'}` 
         });
       }
+    }
+  }
+
+  /**
+   * Notify admin about new registration
+   */
+  static async notifyAdminPayment(interaction, registration, session) {
+    const config = require('../config/config');
+    const Utils = require('../utils');
+
+    // Find admin user
+    const adminUser = Utils.findUserByUsername(interaction.guild, config.ADMIN.USERNAME);
+
+    if (!adminUser) {
+      Logger.warning(`Admin ${config.ADMIN.USERNAME} not found`);
+      return;
+    }
+
+    // Send DM to admin with payment info
+    try {
+      const { EmbedBuilder } = require('discord.js');
+      
+      const paymentEmbed = new EmbedBuilder()
+        .setColor('#FFA500')
+        .setTitle('💳 PENDAFTARAN BARU - MENUNGGU PEMBAYARAN')
+        .setDescription(
+          `**Detail Pendaftaran:**\n\n` +
+          `📌 **Sesi:** ${session.title}\n` +
+          `👤 **User:** ${interaction.user} (${interaction.user.tag})\n` +
+          `📝 **Username:** ${registration.username}\n` +
+          `🎭 **Role:** ${registration.role}\n\n` +
+          `💰 **Biaya Pendaftaran:** Rp 20.000\n\n` +
+          `━━━━━━━━━━━━━━━━━━━━━━━━━━━━\n\n` +
+          `**📸 Informasi QRIS:**\n` +
+          `🏦 **Atas Nama:** ${config.PAYMENT.ACCOUNT_NAME}\n` +
+          `🔢 **NMID:** ${config.PAYMENT.QRIS_NMID}\n\n` +
+          `⏳ **Tunggu user mengirim bukti pembayaran.**\n` +
+          `Gunakan button dibawah untuk konfirmasi/tolak setelah cek pembayaran.`
+        )
+        .setImage(config.PAYMENT.QRIS_IMAGE_URL)
+        .setFooter({ text: `${registration.id} | ${config.BOT.NAME} 🤖` })
+        .setTimestamp();
+
+      const confirmButtons = new ActionRowBuilder()
+        .addComponents(
+          new ButtonBuilder()
+            .setCustomId(`confirm_registration_${registration.id}`)
+            .setLabel('✅ Konfirmasi')
+            .setStyle(ButtonStyle.Success),
+          new ButtonBuilder()
+            .setCustomId(`reject_registration_${registration.id}`)
+            .setLabel('❌ Tolak')
+            .setStyle(ButtonStyle.Danger)
+        );
+
+      await adminUser.send({ 
+        embeds: [paymentEmbed], 
+        components: [confirmButtons] 
+      });
+
+      Logger.success(`Payment notification sent to admin ${adminUser.user.tag}`);
+
+    } catch (error) {
+      Logger.error('Failed to send DM to admin', error);
+      
+      // Fallback: send in channel
+      await interaction.channel.send(
+        `🔔 **Notifikasi untuk Admin ${adminUser}:**\n\n` +
+        `📋 Pendaftaran baru dari ${interaction.user}\n` +
+        `👤 Username: ${registration.username}\n` +
+        `🎭 Role: ${registration.role}\n` +
+        `💰 Biaya: Rp 20.000\n\n` +
+        `⚠️ DM gagal terkirim. Silakan cek detail di log.`
+      );
     }
   }
 
@@ -505,21 +553,41 @@ class SessionHandler {
       interaction.user.tag
     );
 
-    // Send confirmation message
-    const confirmedEmbed = SessionEmbeds.createConfirmedEmbed(
-      registration, 
-      session, 
-      interaction.user.tag
-    );
+    // Send confirmation to user via DM
+    try {
+      const user = await interaction.client.users.fetch(registration.userId);
+      const { EmbedBuilder } = require('discord.js');
+      
+      const confirmEmbed = new EmbedBuilder()
+        .setColor('#00FF00')
+        .setTitle('✅ PENDAFTARAN DIKONFIRMASI!')
+        .setDescription(
+          `Selamat! Pendaftaran Anda telah dikonfirmasi.\n\n` +
+          `**Detail Pendaftaran:**\n` +
+          `📌 **Sesi:** ${session.title}\n` +
+          `👤 **Username:** ${registration.username}\n` +
+          `🎭 **Role:** ${registration.role}\n\n` +
+          `✅ **Dikonfirmasi oleh:** ${interaction.user.tag}\n` +
+          `📝 **Status:** TERDAFTAR\n\n` +
+          `━━━━━━━━━━━━━━━━━━━━━━━━━━━━\n\n` +
+          `🎉 **Terima kasih sudah mendaftar!**\n` +
+          `Silakan cek channel list untuk melihat daftar peserta.`
+        )
+        .setFooter({ text: `${registrationId} | ${config.BOT.NAME} 🤖` })
+        .setTimestamp();
 
-    await interaction.channel.send({ embeds: [confirmedEmbed] });
-    await interaction.reply(`✅ Pendaftaran **${registration.name}** dikonfirmasi oleh ${interaction.user.tag}!`);
+      await user.send({ embeds: [confirmEmbed] });
+    } catch (error) {
+      Logger.warning(`Could not send confirmation DM to user ${registration.userId}`);
+    }
+
+    await interaction.reply({ 
+      content: `✅ Pendaftaran **${registration.username}** (${registration.role}) dikonfirmasi!`,
+      flags: 64
+    });
 
     // Update participant list
     await this.updateParticipantList(interaction.guild, session);
-
-    // Archive and delete payment channel
-    await this.archiveAndDeleteChannel(registration, session, interaction.guild);
 
     Logger.success(`Registration ${registrationId} confirmed by ${interaction.user.tag}`);
   }
@@ -615,27 +683,24 @@ class SessionHandler {
     // Update registration status
     sessionManager.updateRegistrationStatus(registrationId, 'rejected');
 
-    await interaction.reply(`❌ Pendaftaran **${registration.name}** ditolak oleh ${interaction.user.tag}.`);
-
-    // Delete payment channel after delay
-    const paymentChannel = await interaction.guild.channels.fetch(registration.channelId);
-    if (paymentChannel) {
-      await paymentChannel.send(
+    // Send rejection to user via DM
+    try {
+      const user = await interaction.client.users.fetch(registration.userId);
+      await user.send(
         `❌ **Pendaftaran Ditolak**\n\n` +
-        `Mohon maaf, pendaftaran Anda ditolak.\n` +
-        `Silakan hubungi admin untuk informasi lebih lanjut.\n\n` +
-        `⏳ Channel ini akan dihapus dalam ${config.SESSION.DELETE_DELAY_MS / 1000} detik...`
+        `Mohon maaf, pendaftaran Anda untuk sesi **${sessionManager.getSession(registration.sessionId)?.title || 'Unknown'}** ditolak.\n\n` +
+        `📝 **Username:** ${registration.username}\n` +
+        `🎭 **Role:** ${registration.role}\n\n` +
+        `Silakan hubungi admin untuk informasi lebih lanjut.`
       );
-      
-      setTimeout(async () => {
-        try {
-          await paymentChannel.delete();
-          Logger.success(`Payment channel deleted after rejection`);
-        } catch (error) {
-          Logger.error('Failed to delete payment channel', error);
-        }
-      }, config.SESSION.DELETE_DELAY_MS);
+    } catch (error) {
+      Logger.warning(`Could not send rejection DM to user ${registration.userId}`);
     }
+
+    await interaction.reply({ 
+      content: `❌ Pendaftaran **${registration.username}** ditolak.`,
+      flags: 64
+    });
 
     Logger.warning(`Registration ${registrationId} rejected by ${interaction.user.tag}`);
   }
