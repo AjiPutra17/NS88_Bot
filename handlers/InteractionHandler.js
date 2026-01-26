@@ -31,7 +31,7 @@ class InteractionHandler {
       }
 
       // Jika button tidak dikenali
-      Logger.warn(`Unknown button customId: ${customId}`);
+      Logger.warning(`Unknown button customId: ${customId}`);
       return await interaction.reply({
         content: '❌ Button tidak dikenali!',
         ephemeral: true
@@ -61,7 +61,7 @@ class InteractionHandler {
       }
 
       // Jika select menu tidak dikenali
-      Logger.warn(`Unknown select menu customId: ${customId}`);
+      Logger.warning(`Unknown select menu customId: ${customId}`);
       return await interaction.reply({
         content: '❌ Select menu tidak dikenali!',
         ephemeral: true
@@ -116,7 +116,7 @@ class InteractionHandler {
       }
 
       // Jika modal tidak dikenali
-      Logger.warn(`Unknown modal customId: ${customId}`);
+      Logger.warning(`Unknown modal customId: ${customId}`);
       return await interaction.reply({
         content: '❌ Modal tidak dikenali!',
         ephemeral: true
