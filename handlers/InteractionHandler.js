@@ -13,17 +13,37 @@ class InteractionHandler {
       const { customId } = interaction;
       Logger.info(`Button clicked: ${customId} by ${interaction.user.tag}`);
 
-      // Route ke handler yang sesuai berdasarkan customId button
+      // Import SessionHandler untuk session-related buttons
+      const SessionHandler = require('./SessionHandler');
+
+      // Route session buttons
+      if (customId === 'open_session_panel') {
+        return await SessionHandler.handleOpenSessionPanel(interaction);
+      }
+
+      if (customId.startsWith('register_session_')) {
+        return await SessionHandler.handleRegisterButton(interaction);
+      }
+
+      if (customId.startsWith('close_session_')) {
+        return await SessionHandler.handleCloseSession(interaction);
+      }
+
+      if (customId.startsWith('confirm_registration_')) {
+        return await SessionHandler.handleConfirmRegistration(interaction);
+      }
+
+      if (customId.startsWith('reject_registration_')) {
+        return await SessionHandler.handleRejectRegistration(interaction);
+      }
+
+      // Route other buttons
       if (customId.startsWith('ticket_')) {
         return await this.handleTicketButton(interaction);
       } 
       
       if (customId.startsWith('session_')) {
         return await this.handleSessionButton(interaction);
-      }
-      
-      if (customId === 'open_session_panel') {
-        return await this.handleOpenSessionPanel(interaction);
       }
       
       if (customId === 'open_ticket') {
@@ -123,7 +143,19 @@ class InteractionHandler {
       const { customId } = interaction;
       Logger.info(`Modal submitted: ${customId} by ${interaction.user.tag}`);
 
-      // Route berdasarkan customId modal
+      // Import SessionHandler untuk session-related modals
+      const SessionHandler = require('./SessionHandler');
+
+      // Route session modals
+      if (customId === 'create_session_form') {
+        return await SessionHandler.handleSessionCreationSubmit(interaction);
+      }
+
+      if (customId.startsWith('username_form_')) {
+        return await SessionHandler.handleRegistrationSubmit(interaction);
+      }
+
+      // Route other modals
       if (customId === 'ticket_form') {
         return await this.handleTicketForm(interaction);
       }
@@ -156,23 +188,6 @@ class InteractionHandler {
   // =========================================================================
   // BUTTON HANDLERS - Implementasi sesuai kebutuhan bot Anda
   // =========================================================================
-
-  static async handleOpenSessionPanel(interaction) {
-    try {
-      // TODO: Implementasi logic untuk open session panel
-      // Contoh: buka modal, kirim embed, atau apapun yang dibutuhkan
-      
-      await interaction.reply({
-        content: '📋 Membuka panel session...\n\nSilakan pilih opsi yang tersedia.',
-        flags: 64
-      });
-      
-      Logger.success(`Session panel opened by ${interaction.user.tag}`);
-    } catch (error) {
-      Logger.error('Error in handleOpenSessionPanel', error);
-      throw error;
-    }
-  }
 
   static async handleTicketButton(interaction) {
     try {
@@ -338,8 +353,6 @@ class InteractionHandler {
 
   static async handleTicketForm(interaction) {
     try {
-      // Ambil nilai dari form fields
-      // Sesuaikan dengan field ID di modal Anda
       let subject = 'N/A';
       let description = 'N/A';
       
