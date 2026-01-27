@@ -1,5 +1,5 @@
 // ============================================================================
-// SESSION HANDLER - FINAL FIXED VERSION
+// SESSION HANDLER - FINAL ARCHIVE VERSION
 // ============================================================================
 
 const {
@@ -95,7 +95,7 @@ class SessionHandler {
     });
 
     const embed = new EmbedBuilder()
-      .setColor(config.COLORS.SUCCESS)
+      .setColor('#00FF00')
       .setTitle('🎯 PENDAFTARAN DIBUKA')
       .setDescription(
         `📌 **${title}**\n\n` +
@@ -161,29 +161,47 @@ class SessionHandler {
       return interaction.editReply('❌ Session tidak ditemukan.');
     }
 
+    // Allow admin roles
+    const adminRoles = interaction.guild.roles.cache.filter(r =>
+      r.permissions.has(PermissionFlagsBits.Administrator)
+    );
+
+    const overwrites = [
+      { id: interaction.guild.id, deny: [PermissionFlagsBits.ViewChannel] },
+      {
+        id: interaction.user.id,
+        allow: [
+          PermissionFlagsBits.ViewChannel,
+          PermissionFlagsBits.SendMessages,
+          PermissionFlagsBits.AttachFiles
+        ]
+      },
+      {
+        id: interaction.client.user.id,
+        allow: [
+          PermissionFlagsBits.ViewChannel,
+          PermissionFlagsBits.SendMessages,
+          PermissionFlagsBits.ManageChannels
+        ]
+      }
+    ];
+
+    adminRoles.forEach(role => {
+      overwrites.push({
+        id: role.id,
+        allow: [
+          PermissionFlagsBits.ViewChannel,
+          PermissionFlagsBits.SendMessages,
+          PermissionFlagsBits.ReadMessageHistory
+        ]
+      });
+    });
+
     const payChannel = await interaction.guild.channels.create({
       name: `💳-pembayaran-${interaction.user.username}`.toLowerCase(),
       type: ChannelType.GuildText,
       parent: interaction.channel.parentId,
-      permissionOverwrites: [
-        { id: interaction.guild.id, deny: [PermissionFlagsBits.ViewChannel] },
-        {
-          id: interaction.user.id,
-          allow: [
-            PermissionFlagsBits.ViewChannel,
-            PermissionFlagsBits.SendMessages,
-            PermissionFlagsBits.AttachFiles
-          ]
-        },
-        {
-          id: interaction.client.user.id,
-          allow: [
-            PermissionFlagsBits.ViewChannel,
-            PermissionFlagsBits.SendMessages,
-            PermissionFlagsBits.ManageChannels
-          ]
-        }
-      ]
+      permissionOverwrites: overwrites
     });
 
     const registration = sessionManager.addRegistration(sessionId, {
@@ -193,26 +211,23 @@ class SessionHandler {
     });
 
     const paymentEmbed = new EmbedBuilder()
-      .setColor(config.COLORS.WARNING)
+      .setColor('#FFA500')
       .setTitle('💳 PEMBAYARAN')
       .setDescription(
         `👤 User: ${interaction.user}\n` +
         `📋 Sesi: **${session.title}**\n` +
         `💰 Biaya: **${session.feeFormatted}**\n\n` +
-        `🏦 **${config.PAYMENT.ACCOUNT_NAME}**\n` +
-        `🔢 NMID: ${config.PAYMENT.QRIS_NMID}\n\n` +
         `📸 Upload bukti pembayaran (gambar)`
       )
       .setImage(config.PAYMENT.QRIS_IMAGE_URL)
       .setFooter({ text: `${registration.id} | ${config.BOT.NAME}` });
 
     await payChannel.send({ embeds: [paymentEmbed] });
-
     await interaction.editReply(`✅ Upload bukti pembayaran di ${payChannel}`);
   }
 
   // =========================================================================
-  // HANDLE PAYMENT PROOF (messageCreate)
+  // HANDLE PAYMENT PROOF
   // =========================================================================
   static async handlePaymentProof(message) {
     if (!message.channel.name.startsWith('💳-pembayaran-')) return;
@@ -242,8 +257,33 @@ class SessionHandler {
   }
 
   // =========================================================================
-  // CONFIRM REGISTRATION
+  // CONFIRM / REJECT → MOVE TO ARCHIVE
   // =========================================================================
+  static async archivePaymentChannel(interaction, status) {
+    const delay = config.SESSION.PAYMENT_CHANNEL_DELETE_DELAY;
+
+    await interaction.update({
+      content: status === 'confirmed'
+        ? '✅ PEMBAYARAN DIKONFIRMASI'
+        : '❌ PEMBAYARAN DITOLAK',
+      components: []
+    });
+
+    await interaction.channel.setParent(config.SESSION.PAYMENT_CHANNEL_ARCHIVE);
+
+    await interaction.channel.permissionOverwrites.edit(
+      interaction.guild.id,
+      { SendMessages: false }
+    );
+
+    await interaction.channel.send(
+      `📦 **CHANNEL DIARSIPKAN**\n` +
+      `Status: **${status.toUpperCase()}**`
+    );
+
+    Logger.success(`Payment channel archived: ${interaction.channel.name}`);
+  }
+
   static async handleConfirmRegistration(interaction) {
     if (!interaction.member.permissions.has(PermissionFlagsBits.Administrator)) {
       return interaction.reply({ content: '❌ Admin only.', flags: 64 });
@@ -251,18 +291,9 @@ class SessionHandler {
 
     const regId = interaction.customId.split('_')[2];
     sessionManager.updateRegistrationStatus(regId, 'confirmed', interaction.user.tag);
-
-    const delay = config.SESSION.PAYMENT_CHANNEL_DELETE_DELAY;
-
-    await interaction.update({ content: '✅ PEMBAYARAN DIKONFIRMASI', components: [] });
-    await interaction.channel.send(`⏳ Channel akan dihapus dalam ${delay / 1000} detik...`);
-
-    setTimeout(() => interaction.channel.delete().catch(() => {}), delay);
+    await this.archivePaymentChannel(interaction, 'confirmed');
   }
 
-  // =========================================================================
-  // REJECT REGISTRATION
-  // =========================================================================
   static async handleRejectRegistration(interaction) {
     if (!interaction.member.permissions.has(PermissionFlagsBits.Administrator)) {
       return interaction.reply({ content: '❌ Admin only.', flags: 64 });
@@ -270,28 +301,31 @@ class SessionHandler {
 
     const regId = interaction.customId.split('_')[2];
     sessionManager.updateRegistrationStatus(regId, 'rejected', interaction.user.tag);
-
-    const delay = config.SESSION.PAYMENT_CHANNEL_DELETE_DELAY;
-
-    await interaction.update({ content: '❌ PEMBAYARAN DITOLAK', components: [] });
-    await interaction.channel.send(`⏳ Channel akan dihapus dalam ${delay / 1000} detik...`);
-
-    setTimeout(() => interaction.channel.delete().catch(() => {}), delay);
+    await this.archivePaymentChannel(interaction, 'rejected');
   }
 
   // =========================================================================
-  // CLOSE SESSION
+  // CLOSE SESSION → AUTO DELETE CHANNEL
   // =========================================================================
   static async handleCloseSession(interaction) {
     if (!interaction.member.permissions.has(PermissionFlagsBits.Administrator)) {
       return interaction.reply({ content: '❌ Admin only.', flags: 64 });
     }
 
-    const sessionId = interaction.customId.split('_')[2];
-    sessionManager.closeSession(sessionId);
+    const delay = config.SESSION.SESSION_DELETE_DELAY;
 
-    await interaction.message.edit({ components: [] });
-    await interaction.reply({ content: '🔒 Session ditutup.', flags: 64 });
+    await interaction.reply({
+      content: `🔒 Sesi ditutup. Channel akan dihapus dalam ${delay / 1000} detik.`,
+      flags: 64
+    });
+
+    await interaction.channel.send(
+      `🔒 **SESI DITUTUP**\nChannel akan dihapus otomatis.`
+    );
+
+    setTimeout(() => {
+      interaction.channel.delete().catch(() => {});
+    }, delay);
   }
 }
 
