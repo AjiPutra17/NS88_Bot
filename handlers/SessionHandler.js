@@ -1,5 +1,5 @@
 // ============================================================================
-// SESSION HANDLER (FULL IMPLEMENTATION)
+// SESSION HANDLER - FULL VERSION
 // ============================================================================
 
 const {
@@ -14,8 +14,8 @@ const {
   EmbedBuilder,
 } = require('discord.js');
 
-const config = require('../config/config');
 const Logger = require('../utils/logger');
+const config = require('../config/config');
 const { sessionManager } = require('../managers');
 
 class SessionHandler {
@@ -25,34 +25,34 @@ class SessionHandler {
   // ==========================================================================
   static async handleOpenSessionPanel(interaction) {
     if (!interaction.member.permissions.has(PermissionFlagsBits.Administrator)) {
-      return interaction.reply({ content: '❌ Hanya admin!', flags: 64 });
+      return interaction.reply({ content: '❌ Admin only.', flags: 64 });
     }
     await this.showSessionCreationModal(interaction);
   }
 
   // ==========================================================================
-  // ADMIN: CREATE SESSION MODAL
+  // ADMIN: SESSION CREATION MODAL
   // ==========================================================================
   static async showSessionCreationModal(interaction) {
     const modal = new ModalBuilder()
       .setCustomId('create_session_form')
-      .setTitle('📋 Buat Sesi Pendaftaran');
+      .setTitle('📋 Buat Session');
 
-    const nameInput = new TextInputBuilder()
+    const name = new TextInputBuilder()
       .setCustomId('session_name')
-      .setLabel('Nama Sesi')
+      .setLabel('Nama Session')
       .setStyle(TextInputStyle.Short)
       .setRequired(true);
 
-    const feeInput = new TextInputBuilder()
+    const fee = new TextInputBuilder()
       .setCustomId('session_fee')
       .setLabel('Biaya')
       .setStyle(TextInputStyle.Short)
       .setRequired(true);
 
     modal.addComponents(
-      new ActionRowBuilder().addComponents(nameInput),
-      new ActionRowBuilder().addComponents(feeInput),
+      new ActionRowBuilder().addComponents(name),
+      new ActionRowBuilder().addComponents(fee)
     );
 
     await interaction.showModal(modal);
@@ -67,14 +67,13 @@ class SessionHandler {
     const title = interaction.fields.getTextInputValue('session_name');
     const fee = parseInt(interaction.fields.getTextInputValue('session_fee'));
 
-    if (isNaN(fee) || fee < 0) {
+    if (isNaN(fee)) {
       return interaction.editReply({ content: '❌ Biaya tidak valid.' });
     }
 
     const channel = await interaction.guild.channels.create({
       name: `📋-${title.toLowerCase().replace(/\s+/g, '-')}`,
       type: ChannelType.GuildText,
-      parent: interaction.channel.parentId,
       permissionOverwrites: [
         {
           id: interaction.guild.id,
@@ -97,7 +96,6 @@ class SessionHandler {
       fee,
       feeFormatted: `Rp ${fee.toLocaleString('id-ID')}`,
       channelId: channel.id,
-      creatorId: interaction.user.id,
       status: 'open',
     });
 
@@ -111,14 +109,11 @@ class SessionHandler {
       new ButtonBuilder()
         .setCustomId(`close_session_${session.id}`)
         .setLabel('🔒 TUTUP')
-        .setStyle(ButtonStyle.Danger),
+        .setStyle(ButtonStyle.Danger)
     );
 
     await channel.send({ embeds: [embed], components: [buttons] });
-
-    await interaction.editReply({
-      content: `✅ Session **${title}** dibuat di ${channel}`,
-    });
+    await interaction.editReply({ content: `✅ Session dibuat: ${channel}` });
   }
 
   // ==========================================================================
@@ -132,13 +127,6 @@ class SessionHandler {
       return interaction.reply({ content: '❌ Session tidak tersedia.', flags: 64 });
     }
 
-    await this.showUsernameModal(interaction, session);
-  }
-
-  // ==========================================================================
-  // USERNAME MODAL
-  // ==========================================================================
-  static async showUsernameModal(interaction, session) {
     const modal = new ModalBuilder()
       .setCustomId(`username_form_${session.id}`)
       .setTitle('📝 Pendaftaran');
@@ -150,14 +138,14 @@ class SessionHandler {
       .setRequired(true);
 
     modal.addComponents(
-      new ActionRowBuilder().addComponents(username),
+      new ActionRowBuilder().addComponents(username)
     );
 
     await interaction.showModal(modal);
   }
 
   // ==========================================================================
-  // SUBMIT REGISTRATION
+  // USER: SUBMIT REGISTRATION
   // ==========================================================================
   static async handleRegistrationSubmit(interaction) {
     const sessionId = interaction.customId.split('_')[2];
@@ -175,60 +163,104 @@ class SessionHandler {
       status: 'pending',
     });
 
+    const paymentChannel = await interaction.guild.channels.create({
+      name: `💳-pembayaran-${interaction.user.username}`.toLowerCase(),
+      type: ChannelType.GuildText,
+      permissionOverwrites: [
+        { id: interaction.guild.id, deny: [PermissionFlagsBits.ViewChannel] },
+        {
+          id: interaction.user.id,
+          allow: [
+            PermissionFlagsBits.ViewChannel,
+            PermissionFlagsBits.SendMessages,
+            PermissionFlagsBits.AttachFiles,
+          ],
+        },
+        {
+          id: interaction.client.user.id,
+          allow: [
+            PermissionFlagsBits.ViewChannel,
+            PermissionFlagsBits.SendMessages,
+            PermissionFlagsBits.ManageChannels,
+          ],
+        },
+      ],
+    });
+
+    await paymentChannel.send(
+      `💳 **UPLOAD BUKTI PEMBAYARAN**\n\n` +
+      `👤 ${interaction.user}\n` +
+      `📋 ${session.title}\n` +
+      `💰 ${session.feeFormatted}`
+    );
+
     await interaction.reply({
-      content:
-        `✅ **Pendaftaran berhasil!**\n\n` +
-        `👤 Username: ${username}\n` +
-        `📋 Session: ${session.title}\n\n` +
-        `Silakan upload bukti pembayaran.`,
+      content: `✅ Pendaftaran berhasil.\nSilakan lanjut ke ${paymentChannel}`,
       flags: 64,
     });
   }
 
   // ==========================================================================
-  // PAYMENT PROOF (MESSAGE CREATE)
+  // MESSAGE CREATE: PAYMENT PROOF
   // ==========================================================================
   static async handlePaymentProof(message) {
     if (!message.channel.name.startsWith('💳-pembayaran-')) return;
-    if (!message.attachments.size) return;
+    if (!message.attachments.size) {
+      return message.reply('❌ Kirim **gambar bukti pembayaran**.');
+    }
 
-    const hasImage = message.attachments.some(a =>
+    const image = message.attachments.find(a =>
       a.contentType?.startsWith('image/')
     );
-    if (!hasImage) return;
 
-    await message.reply(
-      `✅ **Bukti pembayaran diterima.**\nAdmin akan memverifikasi.`
+    if (!image) {
+      return message.reply('❌ File harus berupa gambar.');
+    }
+
+    const buttons = new ActionRowBuilder().addComponents(
+      new ButtonBuilder()
+        .setCustomId(`confirm_payment_${message.author.id}`)
+        .setLabel('✅ APPROVE')
+        .setStyle(ButtonStyle.Success),
+      new ButtonBuilder()
+        .setCustomId(`reject_payment_${message.author.id}`)
+        .setLabel('❌ REJECT')
+        .setStyle(ButtonStyle.Danger)
     );
+
+    await message.reply({
+      content: '⏳ Menunggu verifikasi admin...',
+      components: [buttons],
+    });
 
     Logger.success(`Payment proof from ${message.author.tag}`);
   }
 
   // ==========================================================================
-  // ADMIN: CONFIRM REGISTRATION
+  // ADMIN: CONFIRM PAYMENT
   // ==========================================================================
   static async handleConfirmRegistration(interaction) {
     if (!interaction.member.permissions.has(PermissionFlagsBits.Administrator)) {
       return interaction.reply({ content: '❌ Admin only.', flags: 64 });
     }
 
-    await interaction.reply({
-      content: '✅ Pendaftaran dikonfirmasi.',
-      flags: 64,
+    await interaction.update({
+      content: '✅ **PEMBAYARAN DISETUJUI**',
+      components: [],
     });
   }
 
   // ==========================================================================
-  // ADMIN: REJECT REGISTRATION
+  // ADMIN: REJECT PAYMENT
   // ==========================================================================
   static async handleRejectRegistration(interaction) {
     if (!interaction.member.permissions.has(PermissionFlagsBits.Administrator)) {
       return interaction.reply({ content: '❌ Admin only.', flags: 64 });
     }
 
-    await interaction.reply({
-      content: '❌ Pendaftaran ditolak.',
-      flags: 64,
+    await interaction.update({
+      content: '❌ **PEMBAYARAN DITOLAK**',
+      components: [],
     });
   }
 
@@ -243,25 +275,21 @@ class SessionHandler {
     const sessionId = interaction.customId.split('_')[2];
     sessionManager.closeSession(sessionId);
 
-    await interaction.reply({
-      content: '🔒 Session ditutup.',
-      flags: 64,
-    });
+    await interaction.reply({ content: '🔒 Session ditutup.', flags: 64 });
   }
 
   // ==========================================================================
-  // EMBED
+  // EMBED BUILDER
   // ==========================================================================
   static createSessionAnnounceEmbed(session) {
     return new EmbedBuilder()
-      .setColor('#00FF00')
+      .setColor('#00ff99')
       .setTitle('🎯 PENDAFTARAN DIBUKA')
       .setDescription(
         `📋 **${session.title}**\n` +
         `💰 Biaya: ${session.feeFormatted}\n\n` +
-        `Klik tombol di bawah untuk mendaftar.`,
+        `Klik tombol di bawah untuk mendaftar.`
       )
-      .setFooter({ text: `${session.id} | ${config.BOT.NAME}` })
       .setTimestamp();
   }
 }
