@@ -1,5 +1,5 @@
 // ============================================================================
-// SESSION HANDLER - FINAL PRODUCTION VERSION
+// SESSION HANDLER - FINAL FIXED VERSION
 // ============================================================================
 
 const {
@@ -21,7 +21,7 @@ const { sessionManager } = require('../managers');
 class SessionHandler {
 
   // =========================================================================
-  // OPEN SESSION PANEL (ADMIN)
+  // OPEN SESSION PANEL
   // =========================================================================
   static async handleOpenSessionPanel(interaction) {
     if (!interaction.member.permissions.has(PermissionFlagsBits.Administrator)) {
@@ -62,7 +62,7 @@ class SessionHandler {
     const fee = parseInt(interaction.fields.getTextInputValue('session_fee'));
 
     if (isNaN(fee) || fee < 0) {
-      return interaction.editReply('❌ Biaya harus angka.');
+      return interaction.editReply('❌ Biaya tidak valid.');
     }
 
     const channel = await interaction.guild.channels.create({
@@ -100,7 +100,7 @@ class SessionHandler {
       .setDescription(
         `📌 **${title}**\n\n` +
         `💰 Biaya: **${session.feeFormatted}**\n\n` +
-        `Klik tombol di bawah untuk daftar.`
+        `Klik tombol di bawah untuk mendaftar.`
       )
       .setFooter({ text: `${session.id} | ${config.BOT.NAME}` });
 
@@ -111,7 +111,7 @@ class SessionHandler {
         .setStyle(ButtonStyle.Success),
       new ButtonBuilder()
         .setCustomId(`close_session_${session.id}`)
-        .setLabel('🔒 TUTUP')
+        .setLabel('🔒 TUTUP SESI')
         .setStyle(ButtonStyle.Danger)
     );
 
@@ -186,7 +186,7 @@ class SessionHandler {
       ]
     });
 
-    sessionManager.addRegistration(sessionId, {
+    const registration = sessionManager.addRegistration(sessionId, {
       userId: interaction.user.id,
       username,
       channelId: payChannel.id
@@ -201,14 +201,14 @@ class SessionHandler {
         `💰 Biaya: **${session.feeFormatted}**\n\n` +
         `🏦 **${config.PAYMENT.ACCOUNT_NAME}**\n` +
         `🔢 NMID: ${config.PAYMENT.QRIS_NMID}\n\n` +
-        `📸 Upload **bukti pembayaran (gambar)**`
+        `📸 Upload bukti pembayaran (gambar)`
       )
       .setImage(config.PAYMENT.QRIS_IMAGE_URL)
-      .setFooter({ text: config.BOT.NAME });
+      .setFooter({ text: `${registration.id} | ${config.BOT.NAME}` });
 
     await payChannel.send({ embeds: [paymentEmbed] });
 
-    await interaction.editReply(`✅ Silakan upload bukti pembayaran di ${payChannel}`);
+    await interaction.editReply(`✅ Upload bukti pembayaran di ${payChannel}`);
   }
 
   // =========================================================================
@@ -221,13 +221,16 @@ class SessionHandler {
     const image = message.attachments.find(a => a.contentType?.startsWith('image/'));
     if (!image) return;
 
+    const registration = sessionManager.findRegistrationByChannel(message.channel.id);
+    if (!registration) return;
+
     const buttons = new ActionRowBuilder().addComponents(
       new ButtonBuilder()
-        .setCustomId('confirm_payment')
+        .setCustomId(`confirm_registration_${registration.id}`)
         .setLabel('✅ KONFIRMASI')
         .setStyle(ButtonStyle.Success),
       new ButtonBuilder()
-        .setCustomId('reject_payment')
+        .setCustomId(`reject_registration_${registration.id}`)
         .setLabel('❌ TOLAK')
         .setStyle(ButtonStyle.Danger)
     );
@@ -239,39 +242,39 @@ class SessionHandler {
   }
 
   // =========================================================================
-  // CONFIRM PAYMENT
+  // CONFIRM REGISTRATION
   // =========================================================================
   static async handleConfirmRegistration(interaction) {
     if (!interaction.member.permissions.has(PermissionFlagsBits.Administrator)) {
       return interaction.reply({ content: '❌ Admin only.', flags: 64 });
     }
 
+    const regId = interaction.customId.split('_')[2];
+    sessionManager.updateRegistrationStatus(regId, 'confirmed', interaction.user.tag);
+
     const delay = config.SESSION.PAYMENT_CHANNEL_DELETE_DELAY;
 
     await interaction.update({ content: '✅ PEMBAYARAN DIKONFIRMASI', components: [] });
-
-    await interaction.channel.send(
-      `🎉 Pembayaran berhasil.\nChannel akan dihapus dalam ${delay / 1000} detik...`
-    );
+    await interaction.channel.send(`⏳ Channel akan dihapus dalam ${delay / 1000} detik...`);
 
     setTimeout(() => interaction.channel.delete().catch(() => {}), delay);
   }
 
   // =========================================================================
-  // REJECT PAYMENT
+  // REJECT REGISTRATION
   // =========================================================================
   static async handleRejectRegistration(interaction) {
     if (!interaction.member.permissions.has(PermissionFlagsBits.Administrator)) {
       return interaction.reply({ content: '❌ Admin only.', flags: 64 });
     }
 
+    const regId = interaction.customId.split('_')[2];
+    sessionManager.updateRegistrationStatus(regId, 'rejected', interaction.user.tag);
+
     const delay = config.SESSION.PAYMENT_CHANNEL_DELETE_DELAY;
 
     await interaction.update({ content: '❌ PEMBAYARAN DITOLAK', components: [] });
-
-    await interaction.channel.send(
-      `❌ Pembayaran ditolak.\nChannel akan dihapus dalam ${delay / 1000} detik...`
-    );
+    await interaction.channel.send(`⏳ Channel akan dihapus dalam ${delay / 1000} detik...`);
 
     setTimeout(() => interaction.channel.delete().catch(() => {}), delay);
   }
